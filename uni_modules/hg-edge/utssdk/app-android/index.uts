@@ -2,8 +2,24 @@ import { EdgeRequest, DecryptImage, FetchDecryptImage, RandomHex32, ClearEdgeSes
 import { DxCrypto } from 'uts.sdk.modules.hgEdge'
 import { UTSAndroid } from 'io.dcloud.uts'
 
-const BASE_URL = 'https://huangguoai.com'
+const API_BASE_KEY = 'hg_api_base'
+const DEFAULT_BASE = 'https://huangguoai.com'
 const VISITOR_KEY = 'hg_visitor_id'
+
+/** 每次读 storage，保证探测换线后立刻生效 */
+function getBaseUrl(): string {
+	const cached = uni.getStorageSync(API_BASE_KEY) as string | null
+	if (cached != null && cached.length > 0) {
+		let s = (cached as string).trim()
+		while (s.length > 0 && s.charAt(s.length - 1) == '/') {
+			s = s.substring(0, s.length - 1)
+		}
+		if (s.length > 0) {
+			return s
+		}
+	}
+	return DEFAULT_BASE
+}
 
 type EdgeSession = {
 	privB64: string
@@ -114,7 +130,7 @@ async function doHandshake(scope: string): Promise<EdgeSession> {
 	} as UTSJSONObject
 
 	const localAtHello = nowSec()
-	const helloRes = await postJson(BASE_URL + '/api/' + scope + '/request', helloBody)
+	const helloRes = await postJson(getBaseUrl() + '/api/' + scope + '/request', helloBody)
 
 	const kid = helloRes.getString('kid') ?? ''
 	const sid = helloRes.getString('sid') ?? ''
@@ -247,7 +263,7 @@ async function callOnce(scope: string, session: EdgeSession, method: string, pat
 
 	let callRes: UTSJSONObject
 	try {
-		callRes = await postJson(BASE_URL + '/api/' + scope + '/request', callBody)
+		callRes = await postJson(getBaseUrl() + '/api/' + scope + '/request', callBody)
 	} catch (e) {
 		const msg = '' + e
 		if (msg.indexOf('session_expired') >= 0) {

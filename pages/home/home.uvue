@@ -71,15 +71,23 @@
 					<text class="state-action">点击重试</text>
 				</view>
 				<!-- #ifdef APP-IOS -->
-				<hg-skeleton v-else-if="loading" kind="home"></hg-skeleton>
+				<view v-else-if="loading" class="state-box">
+					<text class="state-text">{{loadHint}}</text>
+					<hg-skeleton kind="home"></hg-skeleton>
+				</view>
 				<!-- #endif -->
 				<!-- #ifndef APP-IOS -->
 				<view v-else-if="loading" class="state-box">
-					<text class="state-text">加载中…</text>
+					<text class="state-text">{{loadHint}}</text>
+					<text v-if="probeHost.length > 0" class="state-sub">{{probeHost}}</text>
 				</view>
 				<!-- #endif -->
 				<template v-else>
 					<view class="quick-row">
+						<view class="quick-item" hover-class="quick-hover" @click="goSwipe">
+							<text class="quick-icon">刷</text>
+							<text class="quick-label">刷短剧</text>
+						</view>
 						<view class="quick-item" hover-class="quick-hover" @click="goRank">
 							<text class="quick-icon">榜</text>
 							<text class="quick-label">热播榜</text>
@@ -183,6 +191,7 @@
 
 <script setup lang="uts">
 	import { fetchHome, fetchSearch } from '../../common/api/huangguo.uts'
+	import { ensureEndpointReady, onProbeProgress, isProbeDone, ProbeProgress } from '../../common/http/endpoint-probe.uts'
 	import { HomeBanner, VideoCard, CateRec, TopicLite } from '../../common/models/video.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
@@ -204,12 +213,32 @@
 	}
 
 	const loading = ref(true)
+	const loadHint = ref('正在选择最快线路…')
+	const probeHost = ref('')
 	const errorText = ref('')
 	const banners = ref<HomeBanner[]>([] as HomeBanner[])
 	const featured = ref<VideoCard[]>([] as VideoCard[])
 	const latest = ref<VideoCard[]>([] as VideoCard[])
 	const cateRec = ref<CateRec[]>([] as CateRec[])
 	const topicRec = ref<TopicLite[]>([] as TopicLite[])
+
+	onProbeProgress((p: ProbeProgress) => {
+		// 内容已出来后不再改提示，避免「探测中」盖在首页上
+		if (!loading.value) {
+			return
+		}
+		if (p.phase == 'done') {
+			loadHint.value = '加载首页…'
+			if (p.bestHost.length > 0) {
+				probeHost.value = p.bestHost + (p.bestMs > 0 ? (' · ' + p.bestMs + 'ms') : '')
+			}
+			return
+		}
+		loadHint.value = p.message.length > 0 ? p.message : '正在选择最快线路…'
+		if (p.bestHost.length > 0) {
+			probeHost.value = p.bestHost + (p.bestMs > 0 ? (' · ' + p.bestMs + 'ms') : '')
+		}
+	})
 
 	const keyword = ref('')
 	const searching = ref(false)
@@ -244,6 +273,10 @@
 		uni.navigateTo({
 			url: '/pages/list/list?mode=latest&title=' + encodeURIComponent('最近更新')
 		})
+	}
+
+	function goSwipe() {
+		uni.switchTab({ url: '/pages/swipe/swipe' })
 	}
 
 	function goTopics() {
@@ -330,12 +363,23 @@
 	async function reload() {
 		loading.value = true
 		errorText.value = ''
+		loadHint.value = isProbeDone() ? '加载首页…' : '正在选择最快线路…'
 		try {
+			await ensureEndpointReady()
+			loadHint.value = '加载首页…'
 			const data = await fetchHome()
 			banners.value = data.banners
 			featured.value = data.featured
 			latest.value = data.latest
-			cateRec.value = data.cateRec
+			const cates: CateRec[] = [] as CateRec[]
+			for (let i = 0; i < data.cateRec.length; i++) {
+				const cn = data.cateRec[i].cateName
+				if (cn.indexOf('魔改') >= 0 || cn.indexOf('换脸') >= 0) {
+					continue
+				}
+				cates.push(data.cateRec[i])
+			}
+			cateRec.value = cates
 			topicRec.value = data.topicRec
 		} catch (e) {
 			errorText.value = '首页加载失败，点击重试'
@@ -445,6 +489,12 @@
 	.state-box {
 		padding-top: 88px;
 		align-items: center;
+	}
+
+	.state-sub {
+		margin-top: 8px;
+		color: #E8C27A;
+		font-size: 12px;
 	}
 
 	.state-text {

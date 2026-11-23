@@ -3,6 +3,15 @@ import { HistoryItem, PostHistoryItem, CollectItem, CommentItem, FollowUser, Mes
 import { PageResult, VideoCard } from '../models/video.uts'
 import { resolveCoverUrl } from '../http/config.uts'
 import { parseCardPage } from './parse.uts'
+import { isLoggedIn } from '../auth/session.uts'
+
+function isAuthError(e: any): boolean {
+	const msg = ('' + e).toLowerCase()
+	return msg.indexOf('401') >= 0 ||
+		msg.indexOf('invalid token') >= 0 ||
+		msg.indexOf('未登录') >= 0 ||
+		msg.indexOf('登录已失效') >= 0
+}
 
 function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
 	const n = obj.getNumber(key)
@@ -70,6 +79,9 @@ export async function rateVideo(id: string, score: number): Promise<number> {
 }
 
 export async function syncHistory(videoId: string, ep: number): Promise<void> {
+	if (!isLoggedIn()) {
+		return
+	}
 	const vid = Math.floor(parseFloat(videoId))
 	const epNum = Math.floor(ep as number)
 	if (vid <= 0 || epNum <= 0) {
@@ -80,11 +92,17 @@ export async function syncHistory(videoId: string, ep: number): Promise<void> {
 	const syncBody = '{"items":[{"video_id":' + vid + ',"ep":' + epNum + '}]}'
 	try {
 		await userPost('/api/users/me/history', singleBody)
-	} catch (_) {
+	} catch (e1) {
+		// token 失效已在 client 清会话，勿再打需登录接口
+		if (isAuthError(e1) || !isLoggedIn()) {
+			return
+		}
 		try {
 			await userPost('/api/users/me/history/sync', syncBody)
-		} catch (e) {
-			console.log('[history] sync fail ' + e)
+		} catch (e2) {
+			if (!isAuthError(e2)) {
+				console.log('[history] sync fail ' + e2)
+			}
 		}
 	}
 }
@@ -352,14 +370,19 @@ export async function readAllMessages(): Promise<void> {
 	await userPost('/api/users/me/messages/read-all', '{}')
 }
 
-export async function fetchComments(videoId: string, page: number): Promise<PageResult<CommentItem>> {
-	const res = await dynamicGet('/api/videos/' + encodeURIComponent(videoId) + '/comments?page=' + page)
+export async function fetchComments(videoId: string, page: number, size: number = 20): Promise<PageResult<CommentItem>> {
+	const sz = size > 0 ? Math.floor(size) : 20
+	const path = '/api/videos/' + encodeURIComponent(videoId) + '/comments?page=' + page + '&size=' + sz
+	const res = await dynamicGet(path)
 	const data = res.getJSON('data')
 	const items: CommentItem[] = []
 	if (data == null) {
 		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<CommentItem>
 	}
-	const arr = data!.getArray('items')
+	let arr = data!.getArray('items')
+	if (arr == null) {
+		arr = data!.getArray('list')
+	}
 	if (arr != null) {
 		const list = arr as Array<any>
 		for (let i = 0; i < list.length; i++) {
@@ -374,9 +397,13 @@ export async function fetchComments(videoId: string, page: number): Promise<Page
 			if (name.length == 0) {
 				name = readStr(it, 'name', '用户')
 			}
+			const text = readStr(it, 'text', readStr(it, 'content', readStr(it, 'body', '')))
+			if (text.length == 0) {
+				continue
+			}
 			items.push({
 				id: readNum(it, 'id', 0) as number,
-				text: readStr(it, 'text', readStr(it, 'content', '')),
+				text: text,
 				userName: name,
 				avatar: avatar,
 				createdAt: readStr(it, 'created_at', ''),

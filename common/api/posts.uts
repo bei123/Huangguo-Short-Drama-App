@@ -1,8 +1,164 @@
 import { publicGet, dynamicGet, userPost, userDelete } from '../http/client.uts'
-import { PostCard, PostDetail } from '../models/extra.uts'
+import { PostCard, PostDetail, PostContentBlock } from '../models/extra.uts'
 import { CategoryItem, PageResult } from '../models/video.uts'
 import { resolveCoverUrl } from '../http/config.uts'
 import { parseCategories } from './parse.uts'
+
+function htmlAttr(tag: string, name: string): string {
+	const key = name + '='
+	const idx = tag.indexOf(key)
+	if (idx < 0) {
+		return ''
+	}
+	const q = tag.charAt(idx + key.length)
+	if (q == '"' || q == "'") {
+		const start = idx + key.length + 1
+		const end = tag.indexOf(q, start)
+		if (end > start) {
+			return tag.substring(start, end).trim()
+		}
+		return ''
+	}
+	// 无引号：读到空白或 >
+	const start2 = idx + key.length
+	let end2 = start2
+	while (end2 < tag.length) {
+		const ch = tag.charAt(end2)
+		if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '>' || ch == '/') {
+			break
+		}
+		end2++
+	}
+	return tag.substring(start2, end2).trim()
+}
+
+function replaceAll(src: string, from: string, to: string): string {
+	if (from.length == 0) {
+		return src
+	}
+	let out = src
+	let guard = 0
+	while (guard < 2000) {
+		const idx = out.indexOf(from)
+		if (idx < 0) {
+			break
+		}
+		out = out.substring(0, idx) + to + out.substring(idx + from.length)
+		guard++
+	}
+	return out
+}
+
+function decodeEntities(s: string): string {
+	let out = s
+	out = replaceAll(out, '&nbsp;', ' ')
+	out = replaceAll(out, '&lt;', '<')
+	out = replaceAll(out, '&gt;', '>')
+	out = replaceAll(out, '&amp;', '&')
+	out = replaceAll(out, '&quot;', '"')
+	out = replaceAll(out, '&#39;', "'")
+	return out
+}
+
+function htmlToPlain(html: string): string {
+	let s = html
+	s = replaceAll(s, '<br>', '\n')
+	s = replaceAll(s, '<br/>', '\n')
+	s = replaceAll(s, '<br />', '\n')
+	s = replaceAll(s, '</p>', '\n')
+	s = replaceAll(s, '</div>', '\n')
+	s = replaceAll(s, '</h1>', '\n')
+	s = replaceAll(s, '</h2>', '\n')
+	s = replaceAll(s, '</h3>', '\n')
+	let guard = 0
+	while (guard < 800) {
+		const start = s.indexOf('<')
+		if (start < 0) {
+			break
+		}
+		const end = s.indexOf('>', start)
+		if (end < 0) {
+			break
+		}
+		s = s.substring(0, start) + s.substring(end + 1)
+		guard++
+	}
+	return decodeEntities(s).trim()
+}
+
+function isPlaceholderSrc(src: string): boolean {
+	if (src.length == 0) {
+		return true
+	}
+	if (src.indexOf('cover-placeholder') >= 0) {
+		return true
+	}
+	if (src.indexOf('/static/web/images/') >= 0) {
+		return true
+	}
+	return false
+}
+
+/**
+ * 解析图文 HTML：文本与图片分段。
+ * 图片优先取 data-src（密文 CDN），交给 hg-cover 解密；跳过占位 src。
+ */
+export function parsePostContent(html: string): PostContentBlock[] {
+	const blocks: PostContentBlock[] = [] as PostContentBlock[]
+	if (html.length == 0) {
+		return blocks
+	}
+	let i = 0
+	let textBuf = ''
+	const lower = html.toLowerCase()
+
+	function flushText() {
+		const t = htmlToPlain(textBuf)
+		textBuf = ''
+		if (t.length > 0) {
+			blocks.push({
+				kind: 'text',
+				text: t,
+				src: ''
+			} as PostContentBlock)
+		}
+	}
+
+	while (i < html.length) {
+		const imgIdx = lower.indexOf('<img', i)
+		if (imgIdx < 0) {
+			textBuf += html.substring(i)
+			break
+		}
+		textBuf += html.substring(i, imgIdx)
+		flushText()
+		const tagEnd = html.indexOf('>', imgIdx)
+		if (tagEnd < 0) {
+			break
+		}
+		const tag = html.substring(imgIdx, tagEnd + 1)
+		let src = htmlAttr(tag, 'data-src')
+		if (src.length == 0) {
+			src = htmlAttr(tag, 'data-original')
+		}
+		if (src.length == 0) {
+			const rawSrc = htmlAttr(tag, 'src')
+			if (!isPlaceholderSrc(rawSrc)) {
+				src = rawSrc
+			}
+		}
+		if (src.length > 0 && !isPlaceholderSrc(src)) {
+			blocks.push({
+				kind: 'image',
+				text: '',
+				src: resolveCoverUrl(src)
+			} as PostContentBlock)
+		}
+		i = tagEnd + 1
+	}
+	flushText()
+	return blocks
+}
 
 function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
 	const n = obj.getNumber(key)

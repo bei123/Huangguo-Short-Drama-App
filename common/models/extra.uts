@@ -44,6 +44,13 @@ export type PostDetail = {
 	authorFollowing: boolean
 }
 
+/** 图文正文分段：text 纯文本 / image 需解密的封面图 */
+export type PostContentBlock = {
+	kind: string
+	text: string
+	src: string
+}
+
 export type AuthorProfile = {
 	id: number
 	nickname: string

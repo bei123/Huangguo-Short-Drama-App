@@ -1,8 +1,22 @@
 import { EdgeRequest, DecryptImage, FetchDecryptImage, RandomHex32, ClearEdgeSessions, BodyPointSize } from '../interface.uts';
 import { DxCrypto } from 'DxCrypto';
 import { FontMetrics } from 'FontMetrics';
-const BASE_URL = 'https://huangguoai.com';
+const API_BASE_KEY = 'hg_api_base';
+const DEFAULT_BASE = 'https://huangguoai.com';
 const VISITOR_KEY = 'hg_visitor_id';
+function getBaseUrl(): string {
+    const cached = uni.getStorageSync(API_BASE_KEY) as string | null;
+    if (cached != null && (cached as string).length > 0) {
+        let s = (cached as string).trim();
+        while (s.length > 0 && s.charAt(s.length - 1) == '/') {
+            s = s.substring(0, s.length - 1);
+        }
+        if (s.length > 0) {
+            return s;
+        }
+    }
+    return DEFAULT_BASE;
+}
 type EdgeSession = {
     privB64: string;
     kid: string;
@@ -105,7 +119,7 @@ async function doHandshake(scope: string): Promise<EdgeSession> {
         client_pub: pubB64url
     } as UTSJSONObject;
     const localAtHello = nowSec();
-    const helloRes = await postJson(BASE_URL + '/api/' + scope + '/request', helloBody);
+    const helloRes = await postJson(getBaseUrl() + '/api/' + scope + '/request', helloBody);
     const kid = helloRes.getString('kid') ?? '';
     const sid = helloRes.getString('sid') ?? '';
     const serverPub = helloRes.getString('server_pub') ?? '';
@@ -223,7 +237,7 @@ async function callOnce(scope: string, session: EdgeSession, method: string, pat
     } as UTSJSONObject;
     let callRes: UTSJSONObject;
     try {
-        callRes = await postJson(BASE_URL + '/api/' + scope + '/request', callBody);
+        callRes = await postJson(getBaseUrl() + '/api/' + scope + '/request', callBody);
     }
     catch (e) {
         const msg = '' + e;

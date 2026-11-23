@@ -6,88 +6,103 @@
 			<!-- #ifdef APP-IOS -->
 			<view class="status-spacer" :style="statusSpacerStyle"></view>
 			<!-- #endif -->
-			<text class="page-title" :style="titleFontStyle">发现</text>
-			<text class="page-desc">分类 · 榜单 · 专题入口</text>
 
-			<text class="group-title">内容分类</text>
-			<view class="grid">
+			<view class="hero">
+				<text class="page-title" :style="titleFontStyle">发现</text>
+				<text class="page-desc">按分类逛剧 · 榜单与频道</text>
+			</view>
+
+			<!-- 榜单：横向主入口 -->
+			<view class="rank-strip">
+				<view class="rank-cell rank-hot" hover-class="rank-press" @click="openRank('hot', '热播榜')">
+					<text class="rank-tag">HOT</text>
+					<text class="rank-name">热播榜</text>
+					<text class="rank-hint">本周热力</text>
+				</view>
+				<view class="rank-cell rank-rec" hover-class="rank-press" @click="openRank('recommend', '推荐榜')">
+					<text class="rank-tag">PICK</text>
+					<text class="rank-name">推荐榜</text>
+					<text class="rank-hint">口碑精选</text>
+				</view>
+				<view class="rank-cell rank-pot rank-cell-last" hover-class="rank-press" @click="openRank('potential', '潜力榜')">
+					<text class="rank-tag">NEW</text>
+					<text class="rank-name">潜力榜</text>
+					<text class="rank-hint">新作崛起</text>
+				</view>
+			</view>
+
+			<!-- 分类 -->
+			<view class="section-head">
+				<text class="section-title">内容分类</text>
+				<text class="section-sub">{{cateHint}}</text>
+			</view>
+
+			<view v-if="loading" class="state-box">
+				<text class="state-text">{{loadHint}}</text>
+			</view>
+			<view v-else-if="errorText.length > 0" class="state-box" @click="reload">
+				<text class="state-text">{{errorText}}</text>
+				<text class="state-action">点击重试</text>
+			</view>
+			<hg-empty
+				v-else-if="categories.length == 0"
+				mark="类"
+				title="暂无分类"
+				desc="稍后再来看看"
+			></hg-empty>
+			<view v-else class="cate-wrap">
 				<view
 					v-for="(c, idx) in categories"
 					:key="c.id"
-					class="grid-item"
-					:class="'grid-tone-' + (idx % 4)"
-					hover-class="grid-hover"
+					class="cate-chip"
+					:class="'cate-tone-' + (idx % 5)"
+					hover-class="cate-press"
 					@click="openCategory(c.route, c.name)"
 				>
-					<text class="grid-letter">{{c.name.substring(0, 1)}}</text>
-					<text class="grid-text">{{c.name}}</text>
+					<view class="cate-mark">
+						<text class="cate-letter">{{cateLetter(c.name)}}</text>
+					</view>
+					<text class="cate-name" max-lines="1">{{c.name}}</text>
+					<text class="cate-go">›</text>
 				</view>
 			</view>
 
-			<text class="group-title">排行榜</text>
-			<view class="rank-row">
-				<view class="rank-card" hover-class="rank-hover" @click="openRank('hot', '热播榜')">
-					<text class="rank-name">热播榜</text>
-					<text class="rank-desc">热力 TOP20</text>
-				</view>
-				<view class="rank-card" hover-class="rank-hover" @click="openRank('recommend', '推荐榜')">
-					<text class="rank-name">推荐榜</text>
-					<text class="rank-desc">口碑精选</text>
-				</view>
-				<view class="rank-card rank-card-last" hover-class="rank-hover" @click="openRank('potential', '潜力榜')">
-					<text class="rank-name">潜力榜</text>
-					<text class="rank-desc">新作崛起</text>
-				</view>
+			<!-- 频道入口 -->
+			<view class="section-head section-head-gap">
+				<text class="section-title">频道</text>
+				<text class="section-sub">专题 · 资讯 · 专区</text>
 			</view>
-
-			<text class="group-title">更多入口</text>
-			<view class="entry-list">
-				<view class="entry" @click="goTopics">
-					<view class="entry-meta">
-						<text class="entry-name">专题合集</text>
-						<text class="entry-desc">人工编排的作品专辑</text>
-					</view>
-					<text class="entry-arrow">›</text>
+			<view class="channel-grid">
+				<view class="channel" hover-class="channel-press" @click="goTopics">
+					<text class="channel-mark">辑</text>
+					<text class="channel-name">专题合集</text>
+					<text class="channel-desc">人工编排专辑</text>
 				</view>
-				<view class="entry" @click="goPosts">
-					<view class="entry-meta">
-						<text class="entry-name">图文资讯</text>
-						<text class="entry-desc">吃瓜 · 剧评 · 幕后</text>
-					</view>
-					<text class="entry-arrow">›</text>
+				<view class="channel channel-even" hover-class="channel-press" @click="goPosts">
+					<text class="channel-mark">讯</text>
+					<text class="channel-name">图文资讯</text>
+					<text class="channel-desc">剧评与幕后</text>
 				</view>
-				<view class="entry" @click="goFeed">
-					<view class="entry-meta">
-						<text class="entry-name">推荐信息流</text>
-						<text class="entry-desc">今日推荐与关注更新</text>
-					</view>
-					<text class="entry-arrow">›</text>
+				<view class="channel" hover-class="channel-press" @click="goFeed">
+					<text class="channel-mark">流</text>
+					<text class="channel-name">推荐信息流</text>
+					<text class="channel-desc">今日推荐</text>
 				</view>
-				<view class="entry" @click="goOriginal">
-					<view class="entry-meta">
-						<text class="entry-name">原创专区</text>
-						<text class="entry-desc">原创短剧精选</text>
-					</view>
-					<text class="entry-arrow">›</text>
+				<view class="channel channel-even" hover-class="channel-press" @click="goOriginal">
+					<text class="channel-mark">创</text>
+					<text class="channel-name">原创专区</text>
+					<text class="channel-desc">原创短剧</text>
 				</view>
-				<view class="entry" @click="goLong">
-					<view class="entry-meta">
-						<text class="entry-name">长视频</text>
-						<text class="entry-desc">更长篇幅的剧集</text>
-					</view>
-					<text class="entry-arrow">›</text>
+				<view class="channel" hover-class="channel-press" @click="goLong">
+					<text class="channel-mark">长</text>
+					<text class="channel-name">长视频</text>
+					<text class="channel-desc">更长篇幅</text>
 				</view>
-				<view class="entry entry-last" @click="goSort('new', '最近更新')">
-					<view class="entry-meta">
-						<text class="entry-name">最近更新</text>
-						<text class="entry-desc">按更新时间浏览</text>
-					</view>
-					<text class="entry-arrow">›</text>
+				<view class="channel channel-even" hover-class="channel-press" @click="goSort('new', '最近更新')">
+					<text class="channel-mark">新</text>
+					<text class="channel-name">最近更新</text>
+					<text class="channel-desc">按时间浏览</text>
 				</view>
-			</view>
-
-			<view v-if="errorText.length > 0" class="state-box">
-				<text class="state-text">{{errorText}}</text>
 			</view>
 		</view>
 	<!-- #ifdef APP -->
@@ -101,13 +116,33 @@
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
+	import { ensureEndpointReady, isProbeDone } from '../../common/http/endpoint-probe.uts'
 
-	const pagePadStyle = 'padding: 16px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+	const pagePadStyle = 'padding: 12px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
 	const statusSpacerStyle = 'height:' + uni.getWindowInfo().statusBarHeight + 'px'
 	const titleFontStyle = ref(fontStyle(28))
 
 	const categories = ref<CategoryItem[]>([] as CategoryItem[])
+	const loading = ref(true)
+	const loadHint = ref('正在选择最快线路…')
 	const errorText = ref('')
+	const cateHint = computed((): string => {
+		const n = categories.value.length
+		if (loading.value) {
+			return '加载中'
+		}
+		if (n <= 0) {
+			return '暂无'
+		}
+		return n + ' 个分类'
+	})
+
+	function cateLetter(name: string): string {
+		if (name.length == 0) {
+			return '·'
+		}
+		return name.substring(0, 1)
+	}
 
 	function openCategory(route: string, name: string) {
 		uni.navigateTo({
@@ -136,13 +171,44 @@
 		})
 	}
 
-	onLoad(() => {
-		fetchCategories().then((list) => {
-			categories.value = list
+	/** AI魔改 / AI换脸已下线，不展示 */
+	function isOfflineCategory(c: CategoryItem): boolean {
+		const r = c.route
+		const n = c.name
+		if (r == 'ai-mogai' || r == 'ai-huanlian') {
+			return true
+		}
+		if (n.indexOf('魔改') >= 0 || n.indexOf('换脸') >= 0) {
+			return true
+		}
+		return false
+	}
+
+	function reload() {
+		loading.value = true
+		errorText.value = ''
+		loadHint.value = isProbeDone() ? '加载分类…' : '正在选择最快线路…'
+		ensureEndpointReady().then(() => {
+			loadHint.value = '加载分类…'
+			return fetchCategories()
+		}).then((list) => {
+			const kept: CategoryItem[] = [] as CategoryItem[]
+			for (let i = 0; i < list.length; i++) {
+				if (!isOfflineCategory(list[i])) {
+					kept.push(list[i])
+				}
+			}
+			categories.value = kept
+			loading.value = false
 		}).catch((e) => {
 			errorText.value = '分类加载失败'
+			loading.value = false
 			console.log('[category] fail ' + e)
 		})
+	}
+
+	onLoad(() => {
+		reload()
 	})
 
 	onShow(() => {
@@ -162,7 +228,11 @@
 	}
 
 	.page-inner {
-		padding: 16px;
+		padding: 12px 16px;
+	}
+
+	.hero {
+		margin-bottom: 18px;
 	}
 
 	.page-title {
@@ -173,144 +243,208 @@
 
 	.page-desc {
 		margin-top: 6px;
-		margin-bottom: 20px;
 		color: #8A8E96;
 		font-size: 13px;
 	}
 
-	.group-title {
-		color: #F2F3F5;
-		font-size: 16px;
-		font-weight: bold;
-		margin-bottom: 12px;
-		margin-top: 8px;
-	}
-
-	.grid {
+	.rank-strip {
 		flex-direction: row;
-		flex-wrap: wrap;
-		margin-bottom: 16px;
+		margin-bottom: 22px;
 	}
 
-	.grid-item {
-		width: 31%;
-		margin-right: 3.5%;
-		margin-bottom: 10px;
-		background-color: #1A1D26;
-		border-radius: 12px;
-		border-width: 1px;
-		border-style: solid;
-		border-color: #2A2E38;
-		padding-top: 16px;
-		padding-bottom: 14px;
-		align-items: center;
-	}
-
-	.grid-tone-0 { border-color: #3A3428; }
-	.grid-tone-1 { border-color: #2A3340; }
-	.grid-tone-2 { border-color: #332A38; }
-	.grid-tone-3 { border-color: #2A3830; }
-
-	.grid-hover {
-		background-color: #22262F;
-	}
-
-	.grid-letter {
-		color: #E8C27A;
-		font-size: 18px;
-		font-weight: bold;
-		margin-bottom: 6px;
-	}
-
-	.grid-text {
-		color: #F2F3F5;
-		font-size: 13px;
-		font-weight: bold;
-	}
-
-	.rank-hover {
-		background-color: #22262F;
-	}
-
-	.rank-row {
-		flex-direction: row;
-		margin-bottom: 16px;
-	}
-
-	.rank-card {
+	.rank-cell {
 		flex: 1;
-		background-color: #1A1D26;
-		border-radius: 12px;
+		border-radius: 14px;
 		padding: 14px 10px;
 		margin-right: 8px;
+		min-height: 88px;
+		justify-content: flex-end;
 	}
 
-	.rank-card-last {
+	.rank-cell-last {
 		margin-right: 0;
 	}
 
-	.rank-name {
-		color: #E8C27A;
-		font-size: 14px;
-		font-weight: bold;
+	.rank-hot {
+		background-color: #2A2218;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #4A3A22;
 	}
 
-	.rank-desc {
-		margin-top: 6px;
+	.rank-rec {
+		background-color: #1A2230;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A3848;
+	}
+
+	.rank-pot {
+		background-color: #1C2620;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A4034;
+	}
+
+	.rank-press {
+		opacity: 0.82;
+	}
+
+	.rank-tag {
 		color: #8A8E96;
-		font-size: 11px;
+		font-size: 10px;
+		margin-bottom: 10px;
 	}
 
-	.entry-list {
-		background-color: #1A1D26;
-		border-radius: 12px;
-		overflow: hidden;
-		margin-bottom: 12px;
-	}
-
-	.entry {
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-		padding: 16px 14px;
-		border-bottom-width: 1px;
-		border-bottom-color: #2A2E38;
-		border-bottom-style: solid;
-	}
-
-	.entry-last {
-		border-bottom-width: 0;
-	}
-
-	.entry-meta {
-		flex: 1;
-	}
-
-	.entry-name {
+	.rank-name {
 		color: #F2F3F5;
 		font-size: 15px;
 		font-weight: bold;
 	}
 
-	.entry-desc {
+	.rank-hint {
 		margin-top: 4px;
-		color: #8A8E96;
+		color: #A09070;
+		font-size: 11px;
+	}
+
+	.section-head {
+		flex-direction: row;
+		align-items: baseline;
+		justify-content: space-between;
+		margin-bottom: 12px;
+	}
+
+	.section-head-gap {
+		margin-top: 8px;
+	}
+
+	.section-title {
+		color: #F2F3F5;
+		font-size: 16px;
+		font-weight: bold;
+	}
+
+	.section-sub {
+		color: #6F737A;
 		font-size: 12px;
 	}
 
-	.entry-arrow {
-		color: #6F737A;
-		font-size: 20px;
+	.cate-wrap {
+		margin-bottom: 20px;
+	}
+
+	.cate-chip {
+		flex-direction: row;
+		align-items: center;
+		background-color: #1A1D26;
+		border-radius: 12px;
+		padding: 12px 12px;
+		margin-bottom: 8px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #242830;
+	}
+
+	.cate-tone-0 { border-left-width: 3px; border-left-color: #E8C27A; }
+	.cate-tone-1 { border-left-width: 3px; border-left-color: #7A9EC8; }
+	.cate-tone-2 { border-left-width: 3px; border-left-color: #C89A7A; }
+	.cate-tone-3 { border-left-width: 3px; border-left-color: #7AC8A0; }
+	.cate-tone-4 { border-left-width: 3px; border-left-color: #B07AC8; }
+
+	.cate-press {
+		background-color: #22262F;
+	}
+
+	.cate-mark {
+		width: 36px;
+		height: 36px;
+		border-radius: 10px;
+		background-color: #242830;
+		align-items: center;
+		justify-content: center;
+		margin-right: 12px;
+	}
+
+	.cate-letter {
+		color: #E8C27A;
+		font-size: 15px;
+		font-weight: bold;
+	}
+
+	.cate-name {
+		flex: 1;
+		color: #F2F3F5;
+		font-size: 15px;
+		font-weight: bold;
+	}
+
+	.cate-go {
+		color: #5A5E66;
+		font-size: 18px;
 		margin-left: 8px;
 	}
 
+	.channel-grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-bottom: 8px;
+	}
+
+	.channel {
+		width: 48%;
+		margin-right: 4%;
+		margin-bottom: 10px;
+		background-color: #1A1D26;
+		border-radius: 12px;
+		padding: 14px 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #242830;
+	}
+
+	.channel-even {
+		margin-right: 0;
+	}
+
+	.channel-press {
+		background-color: #22262F;
+	}
+
+	.channel-mark {
+		color: #E8C27A;
+		font-size: 13px;
+		font-weight: bold;
+		margin-bottom: 8px;
+	}
+
+	.channel-name {
+		color: #F2F3F5;
+		font-size: 14px;
+		font-weight: bold;
+	}
+
+	.channel-desc {
+		margin-top: 4px;
+		color: #6F737A;
+		font-size: 11px;
+	}
+
 	.state-box {
-		margin-top: 20px;
+		padding-top: 24px;
+		padding-bottom: 24px;
 		align-items: center;
+		margin-bottom: 12px;
 	}
 
 	.state-text {
 		color: #8A8E96;
+		font-size: 13px;
+	}
+
+	.state-action {
+		margin-top: 8px;
+		color: #E8C27A;
 		font-size: 13px;
 	}
 
@@ -324,24 +458,20 @@
 	.page-desc {
 		font-size: 15px;
 	}
-	.group-title {
+	.section-title {
 		font-size: 17px;
 	}
-	.grid-item {
-		padding-top: 18px;
-		padding-bottom: 16px;
-		min-height: 44px;
-	}
-	.rank-card {
+	.rank-cell {
+		min-height: 96px;
 		padding: 16px 12px;
-		min-height: 44px;
 	}
-	.rank-desc {
-		font-size: 12px;
-	}
-	.entry {
+	.cate-chip {
 		min-height: 44px;
-		padding: 16px;
+		padding: 14px 14px;
+	}
+	.channel {
+		padding: 16px 14px;
+		min-height: 44px;
 	}
 	/* #endif */
 </style>

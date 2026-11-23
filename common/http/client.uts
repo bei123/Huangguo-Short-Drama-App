@@ -1,5 +1,5 @@
 import { edgeRequest } from '@/uni_modules/hg-edge'
-import { HG_BASE_URL } from './config.uts'
+import { getHgBaseUrl, HG_REFERER } from './config.uts'
 import { clearSession, getToken } from '../auth/session.uts'
 
 export class ApiError extends Error {
@@ -24,8 +24,37 @@ function asObj(v: any | null): UTSJSONObject | null {
 	}
 }
 
+function isAuthFailureMessage(msg: string): boolean {
+	const m = msg.toLowerCase()
+	return m.indexOf('invalid token') >= 0 ||
+		m.indexOf('unauthorized') >= 0 ||
+		m.indexOf('未登录') >= 0 ||
+		m.indexOf('inner http 401') >= 0
+}
+
+/** edge 内层 HTTP 非 200 时抛 Error，需从报文里还原业务码并清掉失效 token */
+function throwFromEdgeError(e: any): void {
+	const msg = '' + e
+	if (isAuthFailureMessage(msg)) {
+		clearSession()
+		let detail = '登录已失效'
+		const brace = msg.indexOf('{')
+		if (brace >= 0) {
+			try {
+				const obj = JSON.parse(msg.substring(brace)) as UTSJSONObject
+				const m = obj.getString('msg')
+				if (m != null && m.length > 0) {
+					detail = m as string
+				}
+			} catch (_) { }
+		}
+		throw new ApiError(401, detail)
+	}
+	throw (e as Error)
+}
+
 export async function publicGet(path: string): Promise<UTSJSONObject> {
-	const url = HG_BASE_URL + path
+	const url = getHgBaseUrl() + path
 	try {
 		const plain = await plainGet(url)
 		return assertBiz(plain)
@@ -57,7 +86,12 @@ export async function userGetText(path: string): Promise<string> {
 	if (token.length == 0) {
 		throw new ApiError(401, '未登录')
 	}
-	return await edgeRequest('user', 'GET', path, '', token)
+	try {
+		return await edgeRequest('user', 'GET', path, '', token)
+	} catch (e) {
+		throwFromEdgeError(e)
+		return ''
+	}
 }
 
 export async function userPost(path: string, bodyJson: string): Promise<UTSJSONObject> {
@@ -81,7 +115,12 @@ async function edgeCall(scope: string, method: string, path: string, bodyJson: s
 			throw new ApiError(401, '未登录')
 		}
 	}
-	const raw = await edgeRequest(scope, method, path, bodyJson, token)
+	let raw = ''
+	try {
+		raw = await edgeRequest(scope, method, path, bodyJson, token)
+	} catch (e) {
+		throwFromEdgeError(e)
+	}
 	return parseBiz(raw)
 }
 
@@ -95,7 +134,7 @@ function assertBiz(obj: UTSJSONObject): UTSJSONObject {
 	if (status != null && status != 1) {
 		const msg = obj.getString('msg') ?? '业务失败'
 		const code = (status ?? 0) as number
-		if (code == 401 || msg.indexOf('unauthorized') >= 0 || msg.indexOf('invalid token') >= 0) {
+		if (code == 401 || isAuthFailureMessage(msg)) {
 			clearSession()
 		}
 		throw new ApiError(code, msg)
@@ -110,7 +149,7 @@ function plainGet(url: string): Promise<UTSJSONObject> {
 			method: 'GET',
 			header: {
 				'Accept': 'application/json',
-				'Referer': 'https://huangguoai.com/'
+				'Referer': HG_REFERER
 			} as UTSJSONObject,
 			timeout: 20000,
 			success: (res) => {

@@ -1,87 +1,137 @@
 <template>
-	<!-- #ifdef APP -->
-	<scroll-view class="page" direction="vertical">
-	<!-- #endif -->
-		<view class="page-inner" :style="pagePadStyle">
-			<view class="profile" hover-class="profile-hover" @click="onProfileTap">
-				<view class="avatar" :style="{ backgroundColor: avatarColor }">
-					<text class="avatar-text">{{avatarLetter}}</text>
+	<view class="root">
+		<!-- #ifdef APP -->
+		<scroll-view class="page" direction="vertical">
+		<!-- #endif -->
+			<view class="page-inner" :style="pagePadStyle">
+				<view class="profile" hover-class="profile-hover" @click="onProfileTap">
+					<view class="avatar" :style="{ backgroundColor: avatarColor }">
+						<text class="avatar-text">{{avatarLetter}}</text>
+					</view>
+					<view class="profile-meta">
+						<text class="name" :style="nameFontStyle">{{displayName}}</text>
+						<text class="sign" max-lines="1">{{displaySign}}</text>
+					</view>
+					<text class="profile-action">{{loggedIn ? '编辑' : '登录'}}</text>
 				</view>
-				<view class="profile-meta">
-					<text class="name" :style="nameFontStyle">{{displayName}}</text>
-					<text class="sign" max-lines="1">{{displaySign}}</text>
-				</view>
-				<text class="profile-action">{{loggedIn ? '编辑' : '登录'}}</text>
-			</view>
 
-			<view v-if="loggedIn" class="stats">
-				<view class="stat" @click="goList('like')">
-					<text class="stat-n">{{userLike}}</text>
-					<text class="stat-l">点赞</text>
+				<view v-if="loggedIn" class="stats">
+					<view class="stat" @click="goList('like')">
+						<text class="stat-n">{{userLike}}</text>
+						<text class="stat-l">点赞</text>
+					</view>
+					<view class="stat-div"></view>
+					<view class="stat" @click="goList('collect')">
+						<text class="stat-n">{{userCollect}}</text>
+						<text class="stat-l">收藏</text>
+					</view>
+					<view class="stat-div"></view>
+					<view class="stat" @click="goList('follow')">
+						<text class="stat-n">{{userFollow}}</text>
+						<text class="stat-l">关注</text>
+					</view>
+					<view class="stat-div"></view>
+					<view class="stat" @click="goList('history')">
+						<text class="stat-n">{{userHistory}}</text>
+						<text class="stat-l">历史</text>
+					</view>
 				</view>
-				<view class="stat-div"></view>
-				<view class="stat" @click="goList('collect')">
-					<text class="stat-n">{{userCollect}}</text>
-					<text class="stat-l">收藏</text>
-				</view>
-				<view class="stat-div"></view>
-				<view class="stat" @click="goList('follow')">
-					<text class="stat-n">{{userFollow}}</text>
-					<text class="stat-l">关注</text>
-				</view>
-				<view class="stat-div"></view>
-				<view class="stat" @click="goList('history')">
-					<text class="stat-n">{{userHistory}}</text>
-					<text class="stat-l">历史</text>
-				</view>
-			</view>
 
-			<text class="group-label">我的内容</text>
-			<view class="menu">
-				<view class="menu-item" hover-class="menu-hover" @click="goList('history')">
-					<text class="menu-text">观看历史</text>
-					<text class="menu-arrow">›</text>
-				</view>
-				<view class="menu-item" hover-class="menu-hover" @click="goList('collect')">
-					<text class="menu-text">我的收藏</text>
-					<text class="menu-arrow">›</text>
-				</view>
-				<view class="menu-item" hover-class="menu-hover" @click="goList('like')">
-					<text class="menu-text">我的点赞</text>
-					<text class="menu-arrow">›</text>
-				</view>
-				<view class="menu-item menu-item-last" hover-class="menu-hover" @click="goList('follow')">
-					<text class="menu-text">我的关注</text>
-					<text class="menu-arrow">›</text>
-				</view>
-			</view>
-
-			<text class="group-label">其他</text>
-			<view class="menu">
-				<view class="menu-item" hover-class="menu-hover" @click="goMessages">
-					<text class="menu-text">消息中心</text>
-					<view class="menu-right">
-						<text v-if="unread > 0" class="badge">{{unread}}</text>
+				<text class="group-label">我的内容</text>
+				<view class="menu">
+					<view class="menu-item" hover-class="menu-hover" @click="goList('history')">
+						<text class="menu-text">观看历史</text>
+						<text class="menu-arrow">›</text>
+					</view>
+					<view class="menu-item" hover-class="menu-hover" @click="goList('collect')">
+						<text class="menu-text">我的收藏</text>
+						<text class="menu-arrow">›</text>
+					</view>
+					<view class="menu-item" hover-class="menu-hover" @click="goList('like')">
+						<text class="menu-text">我的点赞</text>
+						<text class="menu-arrow">›</text>
+					</view>
+					<view class="menu-item menu-item-last" hover-class="menu-hover" @click="goList('follow')">
+						<text class="menu-text">我的关注</text>
 						<text class="menu-arrow">›</text>
 					</view>
 				</view>
-				<view class="menu-item" hover-class="menu-hover" @click="goFeed">
-					<text class="menu-text">推荐信息流</text>
-					<text class="menu-arrow">›</text>
+
+				<text class="group-label">其他</text>
+				<view class="menu">
+					<view class="menu-item" hover-class="menu-hover" @click="goMessages">
+						<text class="menu-text">消息中心</text>
+						<view class="menu-right">
+							<text v-if="unread > 0" class="badge">{{unread}}</text>
+							<text class="menu-arrow">›</text>
+						</view>
+					</view>
+					<view class="menu-item" hover-class="menu-hover" @click="goFeed">
+						<text class="menu-text">推荐信息流</text>
+						<text class="menu-arrow">›</text>
+					</view>
+					<view class="menu-item" hover-class="menu-hover" @click="openLineSheet">
+						<view class="menu-line-meta">
+							<text class="menu-text">切换线路</text>
+							<text class="menu-sub">{{currentHost}}{{currentLatencyTip}}</text>
+						</view>
+						<text class="menu-arrow">›</text>
+					</view>
+					<view class="menu-item menu-item-last" hover-class="menu-hover" @click="goMore">
+						<text class="menu-text">关于与站点</text>
+						<text class="menu-arrow">›</text>
+					</view>
 				</view>
-				<view class="menu-item menu-item-last" hover-class="menu-hover" @click="goMore">
-					<text class="menu-text">关于与站点</text>
-					<text class="menu-arrow">›</text>
+
+				<view v-if="loggedIn" class="logout" @click="doLogout">
+					<text class="logout-text">退出登录</text>
 				</view>
 			</view>
+		<!-- #ifdef APP -->
+		</scroll-view>
+		<!-- #endif -->
 
-			<view v-if="loggedIn" class="logout" @click="doLogout">
-				<text class="logout-text">退出登录</text>
+		<!-- 半屏线路面板 -->
+		<view v-if="lineSheetOpen" class="sheet-mask" @click="closeLineSheet">
+			<view class="sheet" :style="sheetStyle" @click.stop="noop">
+				<view class="sheet-handle-wrap">
+					<view class="sheet-handle"></view>
+				</view>
+				<view class="sheet-top">
+					<view class="sheet-titles">
+						<text class="sheet-title">切换线路</text>
+						<text class="sheet-sub">点选线路 · 延迟越低越快</text>
+					</view>
+					<text class="sheet-action" @click="refreshLines">{{lineMeasuring ? '测速中…' : '重新测速'}}</text>
+				</view>
+				<!-- #ifdef APP -->
+				<scroll-view class="sheet-scroll" direction="vertical">
+				<!-- #endif -->
+					<view class="sheet-list">
+						<view
+							v-for="(item, idx) in lines"
+							:key="item.url"
+							class="line-item"
+							:class="lineItemClass(item, idx)"
+							hover-class="line-item-hover"
+							@click="pickLine(item)"
+						>
+							<view class="line-item-left">
+								<text class="line-host">{{item.host}}</text>
+								<text v-if="item.selected" class="line-tag">使用中</text>
+							</view>
+							<text class="line-ms" :class="latencyClass(item)">{{latencyText(item)}}</text>
+						</view>
+						<view v-if="lines.length == 0" class="line-empty">
+							<text class="line-empty-text">{{lineMeasuring ? '正在测速…' : '暂无数据，请重新测速'}}</text>
+						</view>
+					</view>
+				<!-- #ifdef APP -->
+				</scroll-view>
+				<!-- #endif -->
 			</view>
 		</view>
-	<!-- #ifdef APP -->
-	</scroll-view>
-	<!-- #endif -->
+	</view>
 </template>
 
 <script setup lang="uts">
@@ -91,6 +141,14 @@
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
+	import { getHgBaseUrl } from '../../common/http/config.uts'
+	import {
+		EndpointLatency,
+		getLastLatencies,
+		hostOf,
+		measureAllEndpoints,
+		switchToEndpoint
+	} from '../../common/http/endpoint-probe.uts'
 
 	const pagePadStyle = 'padding: 16px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
 	const nameFontStyle = ref(fontStyle(20))
@@ -105,6 +163,124 @@
 	const userFollow = ref(0)
 	const userHistory = ref(0)
 	const unread = ref(0)
+
+	const lines = ref<EndpointLatency[]>([] as EndpointLatency[])
+	const lineMeasuring = ref(false)
+	const lineSheetOpen = ref(false)
+	const currentHost = ref(hostOf(getHgBaseUrl()))
+	const sheetH = Math.floor(uni.getWindowInfo().windowHeight * 0.55)
+	const sheetStyle = 'height:' + sheetH + 'px'
+
+	const currentLatencyTip = computed((): string => {
+		const cur = getHgBaseUrl()
+		for (let i = 0; i < lines.value.length; i++) {
+			const it = lines.value[i]
+			if (it.url == cur && it.ok) {
+				return ' · ' + it.ms + 'ms'
+			}
+		}
+		return ''
+	})
+
+	function noop() { }
+
+	function latencyText(item: EndpointLatency): string {
+		if (!item.ok) {
+			return '超时'
+		}
+		return item.ms + 'ms'
+	}
+
+	function latencyClass(item: EndpointLatency): string {
+		if (!item.ok) {
+			return 'line-ms-bad'
+		}
+		if (item.ms <= 300) {
+			return 'line-ms-good'
+		}
+		if (item.ms <= 800) {
+			return 'line-ms-mid'
+		}
+		return 'line-ms-slow'
+	}
+
+	function lineItemClass(item: EndpointLatency, idx: number): string {
+		let c = ''
+		if (item.selected) {
+			c += 'line-item-on'
+		}
+		if (idx == lines.value.length - 1) {
+			if (c.length > 0) {
+				c += ' '
+			}
+			c += 'line-item-last'
+		}
+		return c
+	}
+
+	function syncLinesFromCache() {
+		const cached = getLastLatencies()
+		if (cached.length > 0) {
+			lines.value = cached
+		}
+		currentHost.value = hostOf(getHgBaseUrl())
+	}
+
+	function openLineSheet() {
+		lineSheetOpen.value = true
+		syncLinesFromCache()
+		if (lines.value.length == 0) {
+			refreshLines()
+		}
+	}
+
+	function closeLineSheet() {
+		lineSheetOpen.value = false
+	}
+
+	async function refreshLines() {
+		if (lineMeasuring.value) {
+			return
+		}
+		lineMeasuring.value = true
+		try {
+			const list = await measureAllEndpoints()
+			lines.value = list
+			currentHost.value = hostOf(getHgBaseUrl())
+		} catch (e) {
+			uni.showToast({ title: '测速失败', icon: 'none' })
+			console.log('[mine] line measure ' + e)
+		} finally {
+			lineMeasuring.value = false
+		}
+	}
+
+	function pickLine(item: EndpointLatency) {
+		if (!item.ok) {
+			uni.showToast({ title: '该线路不可用', icon: 'none' })
+			return
+		}
+		if (item.selected) {
+			uni.showToast({ title: '已在使用', icon: 'none' })
+			return
+		}
+		switchToEndpoint(item.url)
+		currentHost.value = item.host
+		const next: EndpointLatency[] = [] as EndpointLatency[]
+		for (let i = 0; i < lines.value.length; i++) {
+			const it = lines.value[i]
+			next.push({
+				url: it.url,
+				host: it.host,
+				ms: it.ms,
+				ok: it.ok,
+				selected: it.url == item.url
+			} as EndpointLatency)
+		}
+		lines.value = next
+		uni.showToast({ title: '已切换 ' + item.host, icon: 'none' })
+		closeLineSheet()
+	}
 
 	function applyUser(u: HgUser | null) {
 		loggedIn.value = isLoggedIn()
@@ -215,6 +391,7 @@
 		refreshTypeScale()
 		nameFontStyle.value = fontStyle(20)
 		refresh()
+		syncLinesFromCache()
 		try {
 			installLiquidTabBar()
 			syncLiquidTabIndex('/pages/mine/mine')
@@ -223,6 +400,10 @@
 </script>
 
 <style>
+	.root {
+		flex: 1;
+		background-color: #12141a;
+	}
 	.page {
 		flex: 1;
 		background-color: #12141a;
@@ -313,6 +494,136 @@
 		font-size: 12px;
 		margin-bottom: 8px;
 		margin-left: 4px;
+	}
+	.menu-line-meta {
+		flex: 1;
+	}
+	.menu-sub {
+		margin-top: 4px;
+		color: #8A8E96;
+		font-size: 11px;
+	}
+	.sheet-mask {
+		position: absolute;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.55);
+		justify-content: flex-end;
+		z-index: 100;
+	}
+	.sheet {
+		background-color: #1A1D26;
+		border-top-left-radius: 18px;
+		border-top-right-radius: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+		overflow: hidden;
+	}
+	.sheet-handle-wrap {
+		align-items: center;
+		padding-top: 10px;
+		padding-bottom: 4px;
+	}
+	.sheet-handle {
+		width: 36px;
+		height: 4px;
+		border-radius: 2px;
+		background-color: #3A3E48;
+	}
+	.sheet-top {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 16px 12px 16px;
+	}
+	.sheet-titles {
+		flex: 1;
+	}
+	.sheet-title {
+		color: #F2F3F5;
+		font-size: 17px;
+		font-weight: bold;
+	}
+	.sheet-sub {
+		margin-top: 4px;
+		color: #8A8E96;
+		font-size: 12px;
+	}
+	.sheet-action {
+		color: #E8C27A;
+		font-size: 13px;
+		padding: 8px 12px;
+		background-color: #2A261C;
+		border-radius: 8px;
+	}
+	.sheet-scroll {
+		flex: 1;
+	}
+	.sheet-list {
+		padding-bottom: 24px;
+	}
+	.line-item {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 14px 16px;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #2A2E38;
+	}
+	.line-item-last {
+		border-bottom-width: 0;
+	}
+	.line-item-on {
+		background-color: #221E16;
+	}
+	.line-item-hover {
+		background-color: #22262F;
+	}
+	.line-item-left {
+		flex-direction: row;
+		align-items: center;
+		flex: 1;
+		margin-right: 10px;
+	}
+	.line-host {
+		color: #F2F3F5;
+		font-size: 13px;
+	}
+	.line-tag {
+		margin-left: 8px;
+		color: #1A1208;
+		font-size: 10px;
+		background-color: #E8C27A;
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+	.line-ms {
+		font-size: 13px;
+		font-weight: bold;
+	}
+	.line-ms-good {
+		color: #7AC8A0;
+	}
+	.line-ms-mid {
+		color: #E8C27A;
+	}
+	.line-ms-slow {
+		color: #C89A7A;
+	}
+	.line-ms-bad {
+		color: #E07070;
+	}
+	.line-empty {
+		padding: 28px;
+		align-items: center;
+	}
+	.line-empty-text {
+		color: #6F737A;
+		font-size: 13px;
 	}
 	.menu {
 		background-color: #1A1D26;

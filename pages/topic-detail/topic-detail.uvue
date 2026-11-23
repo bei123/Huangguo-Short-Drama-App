@@ -17,16 +17,17 @@
 							:score="item.score"
 							:badge="item.badge"
 							:sub="item.episodeCount + '集'"
-							:cover-w="110"
-							:cover-h="150"
+							:cover-w="cardW"
+							:cover-h="cardH"
+							:tight="true"
 						></hg-video-card>
 					</view>
 				</view>
 				<text v-if="related.length > 0" class="section-title">相关专题</text>
 				<scroll-view v-if="related.length > 0" class="rel-row" direction="horizontal" :show-scrollbar="false">
 					<view v-for="r in related" :key="r.id" class="rel-item" @click="openRelated(r.slug, r.title)">
-						<hg-cover :src="r.cover" :width="140" :height="80" :radius="8"></hg-cover>
-						<text class="rel-title">{{r.title}}</text>
+						<hg-cover :src="r.cover" :width="relCoverW" :height="relCoverH" :radius="8"></hg-cover>
+						<text class="rel-title" max-lines="1">{{r.title}}</text>
 					</view>
 				</scroll-view>
 			</template>
@@ -48,6 +49,12 @@
 	const related = ref<TopicItem[]>([] as TopicItem[])
 	const page = ref(1)
 	const pages = ref(1)
+
+	const winW = uni.getWindowInfo().windowWidth
+	const cardW = Math.floor((winW - 16 - 16 - 16) / 3)
+	const cardH = Math.floor(cardW * 1.36)
+	const relCoverW = 140
+	const relCoverH = 80
 
 	async function reload() {
 		loading.value = true
@@ -98,14 +105,14 @@
 
 <style>
 	.page { flex: 1; background-color: #12141a; }
-	.page-inner { padding: 12px 10px 24px 10px; }
+	.page-inner { padding: 14px 16px 28px 16px; }
 	.state-box { padding-top: 80px; align-items: center; }
 	.state-text { color: #9aa0aa; font-size: 14px; }
-	.intro { color: #b0b4bc; font-size: 13px; margin: 0 4px 14px 4px; }
-	.grid { flex-direction: row; flex-wrap: wrap; }
-	.grid-card { width: 33%; align-items: center; margin-bottom: 12px; }
-	.section-title { color: #f2f2f2; font-size: 16px; font-weight: bold; margin: 10px 4px; }
+	.intro { color: #b0b4bc; font-size: 13px; margin-bottom: 14px; }
+	.grid { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
+	.grid-card { width: 31%; margin-bottom: 16px; align-items: center; }
+	.section-title { color: #f2f2f2; font-size: 16px; font-weight: bold; margin-top: 10px; margin-bottom: 10px; }
 	.rel-row { height: 120px; flex-direction: row; }
-	.rel-item { width: 140px; margin-right: 10px; }
-	.rel-title { margin-top: 4px; color: #d0d3d9; font-size: 12px; text-overflow: ellipsis; }
+	.rel-item { width: 140px; margin-right: 10px; align-items: center; }
+	.rel-title { margin-top: 4px; width: 140px; color: #d0d3d9; font-size: 12px; text-overflow: ellipsis; text-align: center; }
 </style>

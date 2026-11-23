@@ -1,15 +1,17 @@
 /**
- * 液态玻璃总开关（按平台）。
- * iOS：启用原生 UIGlassEffect TabBar（需 Embed unimoduleHgLiquidGlass）。
- * Android：默认关；开真玻璃需含 Liquid-Glass 的自定义基座。
+ * 液态玻璃总开关。
+ * Android / iOS：启用原生液态玻璃 TabBar（Android 需自定义基座）。
+ * 其他端：关闭。
  */
 
-// #ifdef APP-IOS
+// #ifdef APP-ANDROID || APP-IOS
 export const USE_NATIVE_GLASS: boolean = true
 export const TAB_BOTTOM_GAP: number = 96
 // #endif
 
+// #ifndef APP-ANDROID
 // #ifndef APP-IOS
 export const USE_NATIVE_GLASS: boolean = false
 export const TAB_BOTTOM_GAP: number = 20
+// #endif
 // #endif

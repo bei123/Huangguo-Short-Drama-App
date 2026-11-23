@@ -1,42 +1,116 @@
 <template>
-	<!-- #ifdef APP -->
-	<scroll-view class="page" direction="vertical">
-	<!-- #endif -->
-		<view class="page-inner">
-			<view v-if="loading" class="state-box">
-				<text class="state-text">加载中…</text>
+	<view class="root">
+		<!-- #ifdef APP -->
+		<scroll-view class="page" direction="vertical">
+		<!-- #endif -->
+			<view class="page-inner">
+				<view v-if="loading" class="state-box">
+					<text class="state-text">加载中…</text>
+				</view>
+				<view v-else-if="errorText.length > 0" class="state-box" @click="load">
+					<text class="state-text">{{errorText}}</text>
+					<text class="state-action">点击重试</text>
+				</view>
+				<template v-else-if="detail != null">
+					<!-- 封面：按屏宽居中铺满，点击预览 -->
+					<view v-if="detail!.cover.length > 0" class="cover-wrap" @click="openPreview(detail!.cover)">
+						<hg-cover :src="detail!.cover" :width="coverW" :height="coverH" :radius="12" :fit="true"></hg-cover>
+					</view>
+
+					<text class="title">{{detail!.title}}</text>
+
+					<view class="author-row" hover-class="author-press" @click="goAuthor">
+						<view class="avatar">
+							<text class="avatar-text">{{authorLetter}}</text>
+						</view>
+						<view class="author-meta">
+							<text class="author-name">{{detail!.authorName.length > 0 ? detail!.authorName : '黄果作者'}}</text>
+							<text class="author-sub">热度 {{formatHot(detail!.hot)}} · 赞 {{formatHot(likeCount)}} · 藏 {{formatHot(collectCount)}}</text>
+						</view>
+						<text v-if="detail!.authorId > 0" class="author-go">主页 ›</text>
+					</view>
+
+					<view class="act-row">
+						<view class="act" :class="liked ? 'act-on' : ''" hover-class="act-hover" @click="toggleLike">
+							<text class="act-text" :class="liked ? 'act-text-on' : ''">{{liked ? '已赞' : '点赞'}}</text>
+						</view>
+						<view class="act" :class="collected ? 'act-on' : ''" hover-class="act-hover" @click="toggleCollect">
+							<text class="act-text" :class="collected ? 'act-text-on' : ''">{{collected ? '已藏' : '收藏'}}</text>
+						</view>
+						<view v-if="detail!.authorId > 0" class="act act-last" hover-class="act-hover" @click="goAuthor">
+							<text class="act-text">作者</text>
+						</view>
+					</view>
+
+					<view class="divider"></view>
+
+					<view v-for="(b, bi) in contentBlocks" :key="bi" class="block">
+						<text v-if="b.kind == 'text'" class="content">{{b.text}}</text>
+						<view v-else-if="b.kind == 'image'" class="content-img" @click="openPreview(b.src)">
+							<hg-cover :src="b.src" :width="coverW" :height="bodyImgH" :radius="8" :fit="true"></hg-cover>
+						</view>
+					</view>
+					<text v-if="contentBlocks.length == 0" class="content-empty">暂无正文</text>
+
+					<view v-if="detail!.tags.length > 0" class="tags">
+						<text v-for="(t, i) in detail!.tags" :key="i" class="tag">{{t}}</text>
+					</view>
+				</template>
 			</view>
-			<template v-else-if="detail != null">
-				<text class="title">{{detail!.title}}</text>
-				<text class="meta">{{detail!.authorName}} · 热度 {{formatHot(detail!.hot)}}</text>
-				<view class="actions">
-					<text class="action" @click="toggleLike">{{liked ? '已赞' : '点赞'}} {{formatHot(detail!.like)}}</text>
-					<text class="action" @click="toggleCollect">{{collected ? '已藏' : '收藏'}} {{formatHot(detail!.collect)}}</text>
-					<text v-if="detail!.authorId > 0" class="action" @click="goAuthor">作者主页</text>
-				</view>
-				<hg-cover v-if="detail!.cover.length > 0" :src="detail!.cover" :width="340" :height="180" :radius="8"></hg-cover>
-				<text class="content">{{plainContent}}</text>
-				<view class="tags">
-					<text v-for="(t, i) in detail!.tags" :key="i" class="tag">{{t}}</text>
-				</view>
-			</template>
+		<!-- #ifdef APP -->
+		</scroll-view>
+		<!-- #endif -->
+
+		<!-- 页内全屏预览（不依赖 uni.previewImage 原生模块） -->
+		<view v-if="previewOpen" class="preview-mask" @click="closePreview">
+			<image
+				class="preview-img"
+				:src="previewSrc"
+				mode="aspectFit"
+				@click.stop="noop"
+			></image>
+			<view class="preview-bar" @click.stop="noop">
+				<text class="preview-btn" @click="previewPrev">‹</text>
+				<text class="preview-count">{{previewIndex + 1}} / {{previewUrls.length}}</text>
+				<text class="preview-btn" @click="previewNext">›</text>
+				<text class="preview-close" @click="closePreview">关闭</text>
+			</view>
 		</view>
-	<!-- #ifdef APP -->
-	</scroll-view>
-	<!-- #endif -->
+	</view>
 </template>
 
 <script setup lang="uts">
-	import { fetchPostDetail, likePost, collectPost, visitPost } from '../../common/api/posts.uts'
-	import { PostDetail } from '../../common/models/extra.uts'
+	import { fetchPostDetail, likePost, collectPost, visitPost, parsePostContent } from '../../common/api/posts.uts'
+	import { PostDetail, PostContentBlock } from '../../common/models/extra.uts'
 	import { isLoggedIn } from '../../common/auth/session.uts'
+	import { loadDecryptedCover } from '../../common/crypto/image.uts'
 
 	const postId = ref('')
 	const loading = ref(true)
+	const errorText = ref('')
 	const detail = ref<PostDetail | null>(null)
 	const liked = ref(false)
 	const collected = ref(false)
-	const plainContent = ref('')
+	const likeCount = ref(0)
+	const collectCount = ref(0)
+	const contentBlocks = ref<PostContentBlock[]>([] as PostContentBlock[])
+
+	const winW = uni.getWindowInfo().windowWidth
+	const coverW = Math.floor(winW - 32)
+	const coverH = Math.floor(coverW * 0.56)
+	const bodyImgH = Math.floor(coverW * 0.62)
+
+	const authorLetter = computed((): string => {
+		const d = detail.value
+		if (d == null) {
+			return '果'
+		}
+		const n = d.authorName
+		if (n.length == 0) {
+			return '果'
+		}
+		return n.substring(0, 1)
+	})
 
 	function formatHot(n: number): string {
 		if (n >= 10000) {
@@ -45,30 +119,88 @@
 		return '' + n
 	}
 
-	function stripHtml(html: string): string {
-		let s = html
-		s = s.replace('<br>', '\n')
-		s = s.replace('<br/>', '\n')
-		s = s.replace('<br />', '\n')
-		s = s.replace('</p>', '\n')
-		s = s.replace('&nbsp;', ' ')
-		s = s.replace('&lt;', '<')
-		s = s.replace('&gt;', '>')
-		s = s.replace('&amp;', '&')
-		let guard = 0
-		while (guard < 500) {
-			const start = s.indexOf('<')
-			if (start < 0) {
-				break
-			}
-			const end = s.indexOf('>', start)
-			if (end < 0) {
-				break
-			}
-			s = s.substring(0, start) + ' ' + s.substring(end + 1)
-			guard++
+	const previewOpen = ref(false)
+	const previewUrls = ref<string[]>([] as string[])
+	const previewIndex = ref(0)
+	let previewBusy = false
+
+	const previewSrc = computed((): string => {
+		const list = previewUrls.value
+		const idx = previewIndex.value
+		if (idx < 0 || idx >= list.length) {
+			return ''
 		}
-		return s.trim()
+		return list[idx]
+	})
+
+	function collectRawImages(): string[] {
+		const raws: string[] = [] as string[]
+		const d = detail.value
+		if (d != null && d.cover.length > 0) {
+			raws.push(d.cover)
+		}
+		for (let i = 0; i < contentBlocks.value.length; i++) {
+			const b = contentBlocks.value[i]
+			if (b.kind == 'image' && b.src.length > 0) {
+				raws.push(b.src)
+			}
+		}
+		return raws
+	}
+
+	function noop() { }
+
+	function closePreview() {
+		previewOpen.value = false
+	}
+
+	function previewPrev() {
+		const n = previewUrls.value.length
+		if (n <= 1) {
+			return
+		}
+		previewIndex.value = (previewIndex.value - 1 + n) % n
+	}
+
+	function previewNext() {
+		const n = previewUrls.value.length
+		if (n <= 1) {
+			return
+		}
+		previewIndex.value = (previewIndex.value + 1) % n
+	}
+
+	/** 解密后页内全屏预览（自定义基座无 previewImage 模块时也能用） */
+	async function openPreview(currentRaw: string) {
+		if (previewBusy || currentRaw.length == 0) {
+			return
+		}
+		previewBusy = true
+		uni.showLoading({ title: '打开预览…', mask: true })
+		try {
+			const raws = collectRawImages()
+			const urls: string[] = [] as string[]
+			let idx = 0
+			for (let i = 0; i < raws.length; i++) {
+				const path = await loadDecryptedCover(raws[i])
+				urls.push(path)
+				if (raws[i] == currentRaw) {
+					idx = i
+				}
+			}
+			if (urls.length == 0) {
+				return
+			}
+			previewUrls.value = urls
+			previewIndex.value = idx
+			previewOpen.value = true
+		} catch (e) {
+			uni.showToast({ title: '预览失败', icon: 'none' })
+			console.log('[post] preview ' + e)
+		} finally {
+			uni.hideLoading()
+			previewBusy = false
+		}
 	}
 
 	function requireLogin(): boolean {
@@ -81,18 +213,21 @@
 
 	async function load() {
 		loading.value = true
+		errorText.value = ''
 		try {
 			const d = await fetchPostDetail(postId.value)
 			detail.value = d
 			liked.value = d.liked
 			collected.value = d.collected
-			plainContent.value = stripHtml(d.content)
+			likeCount.value = d.like
+			collectCount.value = d.collect
+			contentBlocks.value = parsePostContent(d.content)
 			uni.setNavigationBarTitle({ title: d.title.length > 12 ? d.title.substring(0, 12) + '…' : d.title })
-			// 文档 16.4：登录态下 visit 才会写入吃瓜历史 HTML
 			if (isLoggedIn() && postId.value.length > 0) {
 				visitPost(postId.value)
 			}
 		} catch (e) {
+			errorText.value = '加载失败，点击重试'
 			console.log('[post] ' + e)
 		} finally {
 			loading.value = false
@@ -103,8 +238,14 @@
 		if (!requireLogin() || detail.value == null) {
 			return
 		}
+		const next = !liked.value
 		try {
-			liked.value = await likePost(postId.value, !liked.value)
+			liked.value = await likePost(postId.value, next)
+			if (liked.value) {
+				likeCount.value = likeCount.value + 1
+			} else if (likeCount.value > 0) {
+				likeCount.value = likeCount.value - 1
+			}
 		} catch (e) {
 			uni.showToast({ title: '' + e, icon: 'none' })
 		}
@@ -114,8 +255,14 @@
 		if (!requireLogin() || detail.value == null) {
 			return
 		}
+		const next = !collected.value
 		try {
-			collected.value = await collectPost(postId.value, !collected.value)
+			collected.value = await collectPost(postId.value, next)
+			if (collected.value) {
+				collectCount.value = collectCount.value + 1
+			} else if (collectCount.value > 0) {
+				collectCount.value = collectCount.value - 1
+			}
 		} catch (e) {
 			uni.showToast({ title: '' + e, icon: 'none' })
 		}
@@ -135,21 +282,245 @@
 </script>
 
 <style>
-	.page { flex: 1; background-color: #12141a; }
-	.page-inner { padding: 14px; }
-	.state-box { padding-top: 80px; align-items: center; }
-	.state-text { color: #9aa0aa; font-size: 14px; }
-	.title { color: #f5f5f5; font-size: 20px; font-weight: bold; }
-	.meta { margin-top: 8px; color: #8a8e96; font-size: 12px; }
-	.actions { flex-direction: row; margin-top: 12px; margin-bottom: 12px; }
-	.action {
-		color: #e8c27a; font-size: 13px; margin-right: 16px;
-		background-color: #1c1f27; padding: 6px 10px; border-radius: 4px;
+	.root {
+		flex: 1;
+		background-color: #12141a;
 	}
-	.content { margin-top: 14px; color: #c8ccd3; font-size: 14px; }
-	.tags { flex-direction: row; flex-wrap: wrap; margin-top: 16px; }
+
+	.page {
+		flex: 1;
+		background-color: #12141a;
+	}
+
+	.preview-mask {
+		position: absolute;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.92);
+		justify-content: center;
+		align-items: center;
+		z-index: 100;
+	}
+
+	.preview-img {
+		width: 100%;
+		flex: 1;
+	}
+
+	.preview-bar {
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding-top: 12px;
+		padding-bottom: 28px;
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+
+	.preview-btn {
+		color: #E8C27A;
+		font-size: 28px;
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+
+	.preview-count {
+		color: #C8CCD3;
+		font-size: 13px;
+		margin-left: 8px;
+		margin-right: 8px;
+	}
+
+	.preview-close {
+		margin-left: 20px;
+		color: #E8C27A;
+		font-size: 14px;
+		font-weight: bold;
+	}
+
+	.page-inner {
+		padding: 14px 16px 36px 16px;
+	}
+
+	.state-box {
+		padding-top: 80px;
+		align-items: center;
+	}
+
+	.state-text {
+		color: #8A8E96;
+		font-size: 14px;
+	}
+
+	.state-action {
+		margin-top: 10px;
+		color: #E8C27A;
+		font-size: 13px;
+	}
+
+	.cover-wrap {
+		width: 100%;
+		align-items: center;
+		margin-bottom: 16px;
+	}
+
+	.title {
+		color: #F2F3F5;
+		font-size: 22px;
+		font-weight: bold;
+	}
+
+	.author-row {
+		flex-direction: row;
+		align-items: center;
+		margin-top: 16px;
+		padding: 10px 0;
+	}
+
+	.author-press {
+		opacity: 0.85;
+	}
+
+	.avatar {
+		width: 40px;
+		height: 40px;
+		border-radius: 20px;
+		background-color: #2A261C;
+		align-items: center;
+		justify-content: center;
+		margin-right: 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #3A3428;
+	}
+
+	.avatar-text {
+		color: #E8C27A;
+		font-size: 15px;
+		font-weight: bold;
+	}
+
+	.author-meta {
+		flex: 1;
+	}
+
+	.author-name {
+		color: #F2F3F5;
+		font-size: 14px;
+		font-weight: bold;
+	}
+
+	.author-sub {
+		margin-top: 4px;
+		color: #8A8E96;
+		font-size: 12px;
+	}
+
+	.author-go {
+		color: #6F737A;
+		font-size: 12px;
+		margin-left: 8px;
+	}
+
+	.act-row {
+		flex-direction: row;
+		margin-top: 8px;
+		margin-bottom: 4px;
+	}
+
+	.act {
+		flex: 1;
+		height: 40px;
+		margin-right: 8px;
+		border-radius: 10px;
+		background-color: #1A1D26;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.act-last {
+		margin-right: 0;
+	}
+
+	.act-on {
+		border-color: #4A3A22;
+		background-color: #2A2218;
+	}
+
+	.act-hover {
+		background-color: #22262F;
+	}
+
+	.act-text {
+		color: #C8CCD3;
+		font-size: 13px;
+		font-weight: bold;
+	}
+
+	.act-text-on {
+		color: #E8C27A;
+	}
+
+	.divider {
+		height: 1px;
+		background-color: #242830;
+		margin-top: 16px;
+		margin-bottom: 16px;
+	}
+
+	.block {
+		margin-bottom: 14px;
+	}
+
+	.content {
+		color: #C8CCD3;
+		font-size: 15px;
+	}
+
+	.content-img {
+		width: 100%;
+		align-items: center;
+	}
+
+	.content-empty {
+		color: #6F737A;
+		font-size: 14px;
+	}
+
+	.tags {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-top: 20px;
+	}
+
 	.tag {
-		background-color: #1c1f27; color: #c8ccd3; font-size: 11px;
-		padding: 4px 8px; border-radius: 4px; margin-right: 6px; margin-bottom: 6px;
+		background-color: #1A1D26;
+		color: #A8ACB4;
+		font-size: 12px;
+		padding: 6px 10px;
+		border-radius: 6px;
+		margin-right: 8px;
+		margin-bottom: 8px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
 	}
+
+	/* #ifdef APP-IOS */
+	.title {
+		font-size: 24px;
+	}
+	.content {
+		font-size: 16px;
+	}
+	.act {
+		min-height: 44px;
+		height: 44px;
+	}
+	/* #endif */
 </style>

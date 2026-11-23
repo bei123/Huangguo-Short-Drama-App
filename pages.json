@@ -44,6 +44,16 @@
 			}
 		},
 		{
+			"path": "pages/swipe/swipe",
+			"style": {
+				"navigationBarTitleText": "刷短剧",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#000000",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录",
@@ -199,6 +209,12 @@
 			},
 			{
 				"pagePath": "pages/category/category",
+				"text": " ",
+				"iconPath": "static/tab/blank.png",
+				"selectedIconPath": "static/tab/blank-active.png"
+			},
+			{
+				"pagePath": "pages/swipe/swipe",
 				"text": " ",
 				"iconPath": "static/tab/blank.png",
 				"selectedIconPath": "static/tab/blank-active.png"

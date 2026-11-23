@@ -1,0 +1,344 @@
+import { HG_ENDPOINTS, getHgBaseUrl, setHgBaseUrl } from './config.uts'
+import { clearEdgeSessions } from '@/uni_modules/hg-edge'
+
+const PROBE_PATH = '/api/site/config'
+const PROBE_TIMEOUT = 4500
+/** 同一冷启动内 / 短时间内不重复探测 */
+const PROBE_CACHE_KEY = 'hg_last_probe_ms'
+const PROBE_CACHE_TTL_MS = 30 * 60 * 1000
+
+type ProbeResult = {
+	url: string
+	ms: number
+	ok: boolean
+}
+
+/** 单条线路测速结果（我的页展示 / 切换） */
+export type EndpointLatency = {
+	url: string
+	host: string
+	ms: number
+	ok: boolean
+	selected: boolean
+}
+
+let lastLatencies: EndpointLatency[] = [] as EndpointLatency[]
+let measuring = false
+
+export type ProbeProgress = {
+	phase: string
+	done: number
+	total: number
+	bestMs: number
+	bestHost: string
+	message: string
+}
+
+type ProgressFn = (p: ProbeProgress) => void
+
+let probePromise: Promise<string> | null = null
+let probeDone = false
+let lastProgress: ProbeProgress = {
+	phase: 'idle',
+	done: 0,
+	total: 0,
+	bestMs: 0,
+	bestHost: '',
+	message: ''
+} as ProbeProgress
+
+const listeners: ProgressFn[] = [] as ProgressFn[]
+
+export function getProbeProgress(): ProbeProgress {
+	return lastProgress
+}
+
+export function isProbeDone(): boolean {
+	return probeDone || isProbeCacheFresh()
+}
+
+function isProbeCacheFresh(): boolean {
+	const raw = uni.getStorageSync(PROBE_CACHE_KEY) as number | string | null
+	if (raw == null) {
+		return false
+	}
+	const t = typeof raw == 'number' ? (raw as number) : parseFloat('' + raw)
+	if (t <= 0 || t != t) {
+		return false
+	}
+	return (Date.now() - t) < PROBE_CACHE_TTL_MS
+}
+
+function markProbeCached() {
+	uni.setStorageSync(PROBE_CACHE_KEY, Date.now())
+}
+
+export function onProbeProgress(fn: ProgressFn): void {
+	listeners.push(fn)
+	if (lastProgress.message.length > 0) {
+		fn(lastProgress)
+	}
+}
+
+function emitProgress(p: ProbeProgress) {
+	// 已结束就忽略迟到的 probing 回调，避免再次弹转圈
+	if (probeDone && (p.phase == 'start' || p.phase == 'probing')) {
+		return
+	}
+	lastProgress = p
+	for (let i = 0; i < listeners.length; i++) {
+		listeners[i](p)
+	}
+}
+
+export function hostOf(url: string): string {
+	let s = url
+	if (s.indexOf('https://') == 0) {
+		s = s.substring(8)
+	} else if (s.indexOf('http://') == 0) {
+		s = s.substring(7)
+	}
+	const slash = s.indexOf('/')
+	if (slash >= 0) {
+		s = s.substring(0, slash)
+	}
+	return s
+}
+
+export function getLastLatencies(): EndpointLatency[] {
+	return lastLatencies
+}
+
+function buildLatencyList(results: ProbeResult[]): EndpointLatency[] {
+	const cur = getHgBaseUrl()
+	const out: EndpointLatency[] = [] as EndpointLatency[]
+	for (let i = 0; i < results.length; i++) {
+		const r = results[i]
+		out.push({
+			url: r.url,
+			host: hostOf(r.url),
+			ms: r.ok ? r.ms : 0,
+			ok: r.ok,
+			selected: r.url == cur
+		} as EndpointLatency)
+	}
+	// 可用按延迟升序，不可用垫底（手写排序，避免 UTS 比较器差异）
+	for (let i = 0; i < out.length; i++) {
+		for (let j = i + 1; j < out.length; j++) {
+			let swap = false
+			if (out[i].ok != out[j].ok) {
+				swap = !out[i].ok && out[j].ok
+			} else if (out[i].ok && out[i].ms > out[j].ms) {
+				swap = true
+			}
+			if (swap) {
+				const tmp = out[i]
+				out[i] = out[j]
+				out[j] = tmp
+			}
+		}
+	}
+	return out
+}
+
+/** 手动切换线路，并清 edge 会话 */
+export function switchToEndpoint(url: string): boolean {
+	const changed = setHgBaseUrl(url)
+	try {
+		clearEdgeSessions()
+	} catch (_) { }
+	probeDone = true
+	markProbeCached()
+	for (let i = 0; i < lastLatencies.length; i++) {
+		lastLatencies[i].selected = lastLatencies[i].url == url
+	}
+	return changed
+}
+
+/**
+ * 强制测速全部线路（忽略缓存），返回按延迟排序的列表。
+ * 不自动改当前线路。
+ */
+export async function measureAllEndpoints(): Promise<EndpointLatency[]> {
+	if (measuring) {
+		// 等待进行中的测速：简单轮询 lastLatencies 不够；直接再跑一轮也可，这里拒重入返回缓存
+		return lastLatencies
+	}
+	measuring = true
+	try {
+		const list = HG_ENDPOINTS
+		const tasks: Promise<ProbeResult>[] = [] as Promise<ProbeResult>[]
+		for (let i = 0; i < list.length; i++) {
+			tasks.push(probeOne(list[i]))
+		}
+		const results: ProbeResult[] = [] as ProbeResult[]
+		for (let i = 0; i < tasks.length; i++) {
+			results.push(await tasks[i])
+		}
+		lastLatencies = buildLatencyList(results)
+		return lastLatencies
+	} finally {
+		measuring = false
+	}
+}
+
+function probeOne(base: string): Promise<ProbeResult> {
+	return new Promise<ProbeResult>((resolve) => {
+		const t0 = Date.now()
+		uni.request({
+			url: base + PROBE_PATH,
+			method: 'GET',
+			header: {
+				'Accept': 'application/json',
+				'Referer': 'https://huangguoai.com/'
+			} as UTSJSONObject,
+			timeout: PROBE_TIMEOUT,
+			success: (res) => {
+				const code = res.statusCode ?? 0
+				const ms = Date.now() - t0
+				if (code >= 200 && code < 300) {
+					resolve({ url: base, ms: ms, ok: true } as ProbeResult)
+				} else {
+					resolve({ url: base, ms: ms, ok: false } as ProbeResult)
+				}
+			},
+			fail: (_) => {
+				resolve({ url: base, ms: PROBE_TIMEOUT + 1, ok: false } as ProbeResult)
+			}
+		})
+	})
+}
+
+async function runProbe(): Promise<string> {
+	const list = HG_ENDPOINTS
+	const total = list.length
+	emitProgress({
+		phase: 'start',
+		done: 0,
+		total: total,
+		bestMs: 0,
+		bestHost: '',
+		message: '探测线路 0/' + total
+	} as ProbeProgress)
+
+	const tasks: Promise<ProbeResult>[] = [] as Promise<ProbeResult>[]
+	for (let i = 0; i < list.length; i++) {
+		tasks.push(probeOne(list[i]))
+	}
+
+	let bestUrl = getHgBaseUrl()
+	let bestMs = 2147483647
+	let anyOk = false
+	let finished = 0
+	const collected: ProbeResult[] = [] as ProbeResult[]
+
+	await new Promise<void>((resolveAll) => {
+		if (total == 0) {
+			resolveAll()
+			return
+		}
+		for (let i = 0; i < tasks.length; i++) {
+			tasks[i].then((r) => {
+				if (probeDone) {
+					return
+				}
+				finished++
+				collected.push(r)
+				const tag = r.ok ? ('' + r.ms + 'ms') : 'fail'
+				console.log('[endpoint] ' + r.url + ' → ' + tag)
+				if (r.ok && r.ms < bestMs) {
+					bestMs = r.ms
+					bestUrl = r.url
+					anyOk = true
+				}
+				const host = anyOk ? hostOf(bestUrl) : ''
+				const msg = anyOk
+					? ('探测 ' + finished + '/' + total + ' · 最快 ' + bestMs + 'ms')
+					: ('探测线路 ' + finished + '/' + total)
+				emitProgress({
+					phase: 'probing',
+					done: finished,
+					total: total,
+					bestMs: anyOk ? bestMs : 0,
+					bestHost: host,
+					message: msg
+				} as ProbeProgress)
+				if (finished >= total) {
+					resolveAll()
+				}
+			})
+		}
+	})
+
+	lastLatencies = buildLatencyList(collected)
+
+	if (!anyOk) {
+		console.log('[endpoint] all failed, keep ' + bestUrl)
+		probeDone = true
+		markProbeCached()
+		emitProgress({
+			phase: 'done',
+			done: total,
+			total: total,
+			bestMs: 0,
+			bestHost: hostOf(bestUrl),
+			message: '使用默认线路'
+		} as ProbeProgress)
+		return bestUrl
+	}
+
+	const changed = setHgBaseUrl(bestUrl)
+	if (changed) {
+		try {
+			clearEdgeSessions()
+		} catch (_) { }
+		console.log('[endpoint] selected ' + bestUrl + ' (' + bestMs + 'ms)')
+	} else {
+		console.log('[endpoint] keep ' + bestUrl + ' (' + bestMs + 'ms)')
+	}
+	// 刷新 selected 标记
+	lastLatencies = buildLatencyList(collected)
+	probeDone = true
+	markProbeCached()
+	const tip = hostOf(bestUrl) + ' · ' + bestMs + 'ms'
+	emitProgress({
+		phase: 'done',
+		done: total,
+		total: total,
+		bestMs: bestMs,
+		bestHost: hostOf(bestUrl),
+		message: '已选 ' + tip
+	} as ProbeProgress)
+	uni.showToast({ title: tip, icon: 'none', duration: 1600 })
+	return bestUrl
+}
+
+/**
+ * 并发探测全部线路，选用可用且延迟最低的地址。
+ * 同进程 / 缓存有效期内只跑一轮。
+ */
+export function selectFastestEndpoint(): Promise<string> {
+	if (probeDone || isProbeCacheFresh()) {
+		probeDone = true
+		return Promise.resolve(getHgBaseUrl())
+	}
+	if (probePromise != null) {
+		return probePromise!
+	}
+	probePromise = runProbe().catch((e): string => {
+		console.log('[endpoint] probe error ' + e)
+		probeDone = true
+		markProbeCached()
+		return getHgBaseUrl()
+	})
+	return probePromise!
+}
+
+/** 业务请求前调用：等探测结束（或已结束则立刻返回） */
+export async function ensureEndpointReady(): Promise<string> {
+	if (probeDone || isProbeCacheFresh()) {
+		probeDone = true
+		return getHgBaseUrl()
+	}
+	return await selectFastestEndpoint()
+}

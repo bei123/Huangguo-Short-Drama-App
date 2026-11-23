@@ -1,0 +1,1857 @@
+<template>
+	<view class="root">
+		<view v-if="bootError.length > 0" class="state" @click="reload">
+			<text class="state-mark">果</text>
+			<text class="state-text">{{bootError}}</text>
+			<text class="state-action">点击重试</text>
+		</view>
+		<view v-else-if="items.length == 0" class="state">
+			<text class="state-mark">刷</text>
+			<text class="state-text">{{booting ? '正在准备推荐…' : '暂无内容'}}</text>
+		</view>
+
+		<swiper
+			v-else
+			class="swiper"
+			:style="fullStyle"
+			:vertical="true"
+			:circular="false"
+			:current="current"
+			:duration="260"
+			:disable-touch="speedBoost || seeking || commentOpen"
+			@change="onSwiperChange"
+		>
+			<swiper-item v-for="(item, idx) in items" :key="item.id + '_' + item.ep">
+				<view class="slide" :style="fullStyle">
+					<!-- 封面垫底，避免黑屏闪一下 -->
+					<view class="cover-layer">
+						<hg-cover :src="item.cover" :width="winW" :height="winH" :radius="0"></hg-cover>
+					</view>
+
+					<video
+						v-if="pageVisible && shouldMountVideo(idx) && item.playUrl.length > 0"
+						class="player"
+						:id="'swipeVideo' + idx"
+						:src="item.playUrl"
+						:initial-time="idx == current ? playCurrent : 0"
+						:autoplay="idx == current && !paused"
+						:loop="true"
+						:controls="false"
+						:show-center-play-btn="false"
+						:enable-progress-gesture="false"
+						:muted="false"
+						object-fit="contain"
+						@play="onPlay(idx)"
+						@pause="onPause(idx)"
+						@error="onPlayError(idx)"
+						@timeupdate="onTimeUpdate(idx, $event)"
+					></video>
+
+					<!-- 透明手势层：短触暂停、长按倍速（不用 click，避免与 longpress 互斥） -->
+					<view
+						v-if="idx == current && !commentOpen"
+						class="tap-layer"
+						@touchstart="onGestureStart"
+						@touchmove="onGestureMove"
+						@touchend="onGestureEnd(idx)"
+						@touchcancel="onGestureCancel"
+						@longpress="onLongPressSpeed(idx)"
+					></view>
+
+					<!-- 顶栏：剧集模式可返回推荐流 -->
+					<view class="nav" :style="navStyle">
+						<view v-if="seriesMode" class="nav-back" hover-class="nav-press" @click.stop="exitSeries">
+							<text class="nav-back-text">‹</text>
+						</view>
+						<view v-else class="nav-side"></view>
+						<text class="nav-title">{{seriesMode ? '连看全集' : '刷短剧'}}</text>
+						<text class="nav-count">{{idx == current ? progressText : ''}}</text>
+					</view>
+
+					<!-- 长按倍速提示 -->
+					<view v-if="idx == current && speedBoost" class="speed-badge">
+						<text class="speed-badge-text">2x 倍速</text>
+					</view>
+
+					<!-- 暂停指示 -->
+					<view v-if="idx == current && paused && !speedBoost && !seeking && item.playUrl.length > 0" class="pause-badge">
+						<text class="pause-icon">▶</text>
+					</view>
+
+					<!-- 加载 / 错误 -->
+					<view v-if="idx == current && (item.playLoading || item.playError.length > 0)" class="center-tip">
+						<text class="center-tip-text">{{item.playLoading ? '加载中…' : item.playError}}</text>
+						<text v-if="item.playError.length > 0" class="center-tip-sub" @click.stop="retryPlay(idx)">点此重试</text>
+					</view>
+
+					<!-- 左下标题：窄条，不挡中间暂停区 -->
+					<view class="hud-info" :style="hudInfoStyle">
+						<text class="badge-ep" v-if="item.episodeCount > 0">第 {{item.ep}} / {{item.episodeCount}} 集</text>
+						<text class="title" max-lines="2">{{item.title}}</text>
+						<text class="meta">{{metaLine(item)}}</text>
+					</view>
+
+					<!-- 右侧操作：独立浮层，保证可点 -->
+					<view class="hud-actions" :style="hudActionsStyle">
+						<view class="act" :class="item.liked ? 'act-active' : ''" hover-class="act-press" @click.stop="toggleLike(idx)">
+							<text class="act-mark act-icon" :class="item.liked ? 'act-mark-like' : ''">{{item.liked ? '♥' : '♡'}}</text>
+							<text class="act-label">{{item.liked ? '已赞' : '点赞'}}</text>
+						</view>
+						<view class="act" :class="item.collected ? 'act-active' : ''" hover-class="act-press" @click.stop="toggleCollect(idx)">
+							<text class="act-mark act-icon" :class="item.collected ? 'act-mark-star' : ''">{{item.collected ? '★' : '☆'}}</text>
+							<text class="act-label">{{item.collected ? '已藏' : '收藏'}}</text>
+						</view>
+						<view class="act" hover-class="act-press" @click.stop="openComments(idx)">
+							<text class="act-mark act-icon">💬</text>
+							<text class="act-label">评论</text>
+						</view>
+						<view class="act" hover-class="act-press" @click.stop="onSeriesAction(idx)">
+							<text class="act-mark act-mark-gold">{{seriesMode ? '荐' : '全'}}</text>
+							<text class="act-label">{{seriesMode ? '推荐' : '全集'}}</text>
+						</view>
+					</view>
+
+					<!-- 底进度：独立浮层 -->
+					<view
+						v-if="idx == current && item.playUrl.length > 0"
+						class="prog-wrap"
+						:style="progWrapStyle"
+						@touchstart.stop="onProgStart"
+						@touchmove.stop="onProgMove"
+						@touchend.stop="onProgEnd"
+						@touchcancel.stop="onProgEnd"
+					>
+						<view v-if="seeking" class="seek-preview" :style="seekPreviewStyle">
+							<view class="seek-preview-frame">
+								<hg-cover :src="item.cover" :width="PREVIEW_W" :height="PREVIEW_H" :radius="6"></hg-cover>
+							</view>
+							<text class="seek-preview-time">{{formatTime(seekPreview)}} / {{formatTime(playDuration)}}</text>
+						</view>
+						<view class="prog-times" :class="seeking ? 'prog-times-hide' : ''">
+							<text class="prog-time">{{formatTime(seeking ? seekPreview : playCurrent)}}</text>
+							<text class="prog-time">{{formatTime(playDuration)}}</text>
+						</view>
+						<view class="prog-track" :class="seeking ? 'prog-track-on' : ''">
+							<view class="prog-base" :class="seeking ? 'prog-base-on' : ''"></view>
+							<view class="prog-fill" :class="seeking ? 'prog-fill-on' : ''" :style="progFillStyle"></view>
+							<view class="prog-thumb" :class="seeking ? 'prog-thumb-on' : ''" :style="progThumbStyle"></view>
+						</view>
+					</view>
+
+					<!-- 首屏上滑提示 -->
+					<view v-if="idx == 0 && showSwipeHint" class="swipe-hint" :style="hintStyle">
+						<text class="swipe-hint-text">{{seriesMode ? '上滑切换下一集 · 长按 2 倍速' : '上滑切换 · 长按 2 倍速'}}</text>
+					</view>
+				</view>
+			</swiper-item>
+		</swiper>
+
+		<!-- 评论半屏 -->
+		<view v-if="commentOpen" class="cmt-mask" @click="closeComments">
+			<view class="cmt-sheet" :style="cmtSheetStyle" @click.stop="noop">
+				<view class="cmt-handle-wrap">
+					<view class="cmt-handle"></view>
+				</view>
+				<view class="cmt-top">
+					<text class="cmt-title">评论 {{commentTotal > 0 ? ('' + commentTotal) : ''}}</text>
+					<text class="cmt-close" @click="closeComments">关闭</text>
+				</view>
+				<scroll-view
+					class="cmt-scroll"
+					:style="cmtScrollStyle"
+					direction="vertical"
+					:show-scrollbar="true"
+					@scrolltolower="loadMoreComments"
+				>
+					<view v-if="commentLoading && comments.length == 0" class="cmt-empty">
+						<text class="cmt-empty-text">加载中…</text>
+					</view>
+					<view v-else-if="comments.length == 0" class="cmt-empty">
+						<text class="cmt-empty-text">还没有评论，来抢沙发</text>
+					</view>
+					<view v-for="c in comments" :key="c.id" class="cmt-item">
+						<text class="cmt-user">{{c.userName.length > 0 ? c.userName : '用户'}}</text>
+						<text class="cmt-text">{{c.text}}</text>
+						<text class="cmt-time">{{c.createdAt}}</text>
+					</view>
+					<view v-if="commentLoadingMore" class="cmt-foot">
+						<text class="cmt-foot-text">加载更多…</text>
+					</view>
+					<view v-else-if="comments.length > 0 && commentPage >= commentPages" class="cmt-foot">
+						<text class="cmt-foot-text">没有更多了</text>
+					</view>
+					<view class="cmt-scroll-pad"></view>
+				</scroll-view>
+				<view class="cmt-input-row" :style="cmtInputPadStyle">
+					<input
+						class="cmt-input"
+						type="text"
+						:value="commentDraft"
+						placeholder="说点什么…"
+						placeholder-style="color:#6F737A"
+						confirm-type="send"
+						@input="onCommentInput"
+						@confirm="sendComment"
+					/>
+					<view class="cmt-send" hover-class="cmt-send-press" @click="sendComment">
+						<text class="cmt-send-text">发送</text>
+					</view>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { fetchFeedRecommend } from '../../common/api/content.uts'
+	import { fetchPlayback, fetchVideoDetail } from '../../common/api/huangguo.uts'
+	import { likeVideo, collectVideo, syncHistory, visitVideo, fetchComments, postComment } from '../../common/api/interact.uts'
+	import { VideoCard, EpisodeItem } from '../../common/models/video.uts'
+	import { CommentItem } from '../../common/models/extra.uts'
+	import { isLoggedIn } from '../../common/auth/session.uts'
+	import { ensureEndpointReady } from '../../common/http/endpoint-probe.uts'
+	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
+	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+
+	type SwipeItem = {
+		id: string
+		title: string
+		cover: string
+		score: number
+		episodeCount: number
+		ep: number
+		playUrl: string
+		playLoading: boolean
+		playError: string
+		liked: boolean
+		collected: boolean
+	}
+
+	const win = uni.getWindowInfo()
+	const winW = win.windowWidth
+	const winH = win.windowHeight
+	const statusH = win.statusBarHeight
+	const fullStyle = 'width:' + winW + 'px;height:' + winH + 'px'
+	const navStyle = 'padding-top:' + statusH + 'px'
+	/** 进度条约高 56，操作/标题再叠在其上；整体抬过液态 Tab */
+	const PROG_BLOCK_H = 56
+	const progWrapStyle = 'bottom:' + TAB_BOTTOM_GAP + 'px'
+	const hudActionsStyle = 'bottom:' + (TAB_BOTTOM_GAP + PROG_BLOCK_H) + 'px'
+	const hudInfoStyle = 'bottom:' + (TAB_BOTTOM_GAP + PROG_BLOCK_H) + 'px'
+	const hintStyle = 'bottom:' + (TAB_BOTTOM_GAP + PROG_BLOCK_H + 8) + 'px'
+	const cmtSheetH = Math.floor(winH * 0.62)
+	const cmtSheetStyle = 'height:' + cmtSheetH + 'px'
+	const cmtInputPad = Math.max(12, Math.floor(TAB_BOTTOM_GAP * 0.35))
+	const cmtInputPadStyle = 'padding-bottom:' + cmtInputPad + 'px'
+	// 固定滚动区高度，避免 App 上 flex 滚动裁切导致「看起来加载不全」
+	const cmtScrollH = Math.max(180, cmtSheetH - 52 - 48 - 56 - cmtInputPad)
+	const cmtScrollStyle = 'height:' + cmtScrollH + 'px'
+	const COMMENT_PAGE_SIZE = 30
+
+	const items = ref<SwipeItem[]>([] as SwipeItem[])
+	const current = ref(0)
+	/** false=推荐流；true=某部剧的分集竖滑 */
+	const seriesMode = ref(false)
+	let feedSnapshot: SwipeItem[] = [] as SwipeItem[]
+	let feedCurrent = 0
+	let feedPage = 1
+	let feedPages = 1
+	const commentOpen = ref(false)
+	const commentLoading = ref(false)
+	const commentLoadingMore = ref(false)
+	const commentDraft = ref('')
+	const commentTotal = ref(0)
+	const commentPage = ref(1)
+	const commentPages = ref(1)
+	const comments = ref<CommentItem[]>([] as CommentItem[])
+	let commentVideoId = ''
+	const page = ref(1)
+	const pages = ref(1)
+	const booting = ref(true)
+	const bootError = ref('')
+	const loadingMore = ref(false)
+	const paused = ref(false)
+	const showSwipeHint = ref(true)
+	const speedBoost = ref(false)
+	/** 当前 Tab 是否可见；切走时卸掉 video，彻底停声 */
+	const pageVisible = ref(true)
+	/** 切走前是否在播，回来后自动续播 */
+	let resumeOnShow = false
+	/** 手势：短触暂停 / 长按倍速 */
+	let gestureActive = false
+	let longPressFired = false
+	let gestureDownAt = 0
+	let gestureDownX = 0
+	let gestureDownY = 0
+	let gestureLastX = 0
+	let gestureLastY = 0
+	const GESTURE_MOVE_CANCEL = 22
+	const SPEED_FAST = 2.0
+	const SPEED_NORMAL = 1.0
+
+	const playCurrent = ref(0)
+	const playDuration = ref(0)
+	const seeking = ref(false)
+	const seekRatio = ref(0)
+	const PROG_PAD = 14
+	const PROG_THUMB = 14
+	const PREVIEW_W = 96
+	const PREVIEW_H = 128
+	/** 拖动时节流 seek，避免主画面卡顿 */
+	const LIVE_SEEK_GAP_MS = 120
+	let lastLiveSeekMs = 0
+	let wasPlayingBeforeSeek = false
+
+	const progressText = computed((): string => {
+		const n = items.value.length
+		if (n == 0) {
+			return ''
+		}
+		if (seriesMode.value) {
+			const it = items.value[current.value]
+			if (it != null && it.episodeCount > 0) {
+				return it.ep + '/' + it.episodeCount
+			}
+		}
+		return (current.value + 1) + ' / ' + n
+	})
+
+	const seekPreview = computed((): number => {
+		if (playDuration.value <= 0) {
+			return 0
+		}
+		return seekRatio.value * playDuration.value
+	})
+
+	const displayRatio = computed((): number => {
+		if (seeking.value) {
+			return seekRatio.value
+		}
+		if (playDuration.value <= 0) {
+			return 0
+		}
+		let r = playCurrent.value / playDuration.value
+		if (r < 0) {
+			r = 0
+		}
+		if (r > 1) {
+			r = 1
+		}
+		return r
+	})
+
+	const progFillStyle = computed((): string => {
+		return 'width:' + (displayRatio.value * 100) + '%'
+	})
+
+	const progThumbStyle = computed((): string => {
+		const trackW = winW - PROG_PAD * 2
+		const thumb = seeking.value ? 18 : PROG_THUMB
+		const x = displayRatio.value * trackW - thumb / 2
+		return 'left:' + x + 'px'
+	})
+
+	/** 预览框跟着手指，左右钳在边距内 */
+	const seekPreviewStyle = computed((): string => {
+		const trackW = winW - PROG_PAD * 2
+		let left = PROG_PAD + seekRatio.value * trackW - PREVIEW_W / 2
+		const minL = PROG_PAD
+		const maxL = winW - PROG_PAD - PREVIEW_W
+		if (left < minL) {
+			left = minL
+		}
+		if (left > maxL) {
+			left = maxL
+		}
+		return 'left:' + left + 'px'
+	})
+
+	function noop() { }
+
+	function formatTime(sec: number): string {
+		if (sec <= 0 || sec != sec) {
+			return '00:00'
+		}
+		const s = Math.floor(sec)
+		const m = Math.floor(s / 60)
+		const r = s % 60
+		const mm = m < 10 ? ('0' + m) : ('' + m)
+		const ss = r < 10 ? ('0' + r) : ('' + r)
+		return mm + ':' + ss
+	}
+
+	function ratioFromPageX(pageX: number): number {
+		const left = PROG_PAD
+		const w = winW - PROG_PAD * 2
+		if (w <= 0) {
+			return 0
+		}
+		let r = (pageX - left) / w
+		if (r < 0) {
+			r = 0
+		}
+		if (r > 1) {
+			r = 1
+		}
+		return r
+	}
+
+	function touchPageX(e: UniTouchEvent): number {
+		try {
+			if (e.touches.length > 0) {
+				return e.touches[0].pageX
+			}
+		} catch (_) { }
+		try {
+			if (e.changedTouches.length > 0) {
+				return e.changedTouches[0].pageX
+			}
+		} catch (_) { }
+		return 0
+	}
+
+	function liveSeekTo(idx: number, t: number, force: boolean) {
+		const now = Date.now()
+		if (!force && now - lastLiveSeekMs < LIVE_SEEK_GAP_MS) {
+			return
+		}
+		lastLiveSeekMs = now
+		try {
+			const ctx = uni.createVideoContext('swipeVideo' + idx)
+			ctx.seek(t)
+		} catch (err) {
+			console.log('[swipe] liveSeek ' + err)
+		}
+	}
+
+	function onProgStart(e: UniTouchEvent) {
+		if (playDuration.value <= 0) {
+			return
+		}
+		const idx = current.value
+		wasPlayingBeforeSeek = !paused.value
+		seeking.value = true
+		seekRatio.value = ratioFromPageX(touchPageX(e))
+		lastLiveSeekMs = 0
+		try {
+			const ctx = uni.createVideoContext('swipeVideo' + idx)
+			ctx.pause()
+		} catch (_) { }
+		liveSeekTo(idx, seekRatio.value * playDuration.value, true)
+		haptic('light')
+	}
+
+	function onProgMove(e: UniTouchEvent) {
+		if (!seeking.value) {
+			return
+		}
+		seekRatio.value = ratioFromPageX(touchPageX(e))
+		liveSeekTo(current.value, seekRatio.value * playDuration.value, false)
+	}
+
+	function onProgEnd(e: UniTouchEvent) {
+		if (!seeking.value) {
+			return
+		}
+		const r = ratioFromPageX(touchPageX(e))
+		seekRatio.value = r
+		const idx = current.value
+		const t = r * playDuration.value
+		playCurrent.value = t
+		try {
+			const ctx = uni.createVideoContext('swipeVideo' + idx)
+			ctx.seek(t)
+			if (wasPlayingBeforeSeek || !paused.value) {
+				paused.value = false
+				ctx.play()
+			}
+		} catch (err) {
+			console.log('[swipe] seek ' + err)
+		}
+		seeking.value = false
+		wasPlayingBeforeSeek = false
+		gestureActive = false
+		longPressFired = false
+	}
+
+	function onTimeUpdate(idx: number, e: UniVideoTimeUpdateEvent) {
+		if (idx != current.value || seeking.value) {
+			return
+		}
+		try {
+			playCurrent.value = e.detail.currentTime
+			if (e.detail.duration > 0) {
+				playDuration.value = e.detail.duration
+			}
+		} catch (_) { }
+	}
+
+	function resetProgress() {
+		playCurrent.value = 0
+		playDuration.value = 0
+		seeking.value = false
+		seekRatio.value = 0
+	}
+
+	function haptic(kind: string) {
+		try {
+			uni.vibrateShort({
+				type: kind
+			})
+		} catch (_) { }
+	}
+
+	function metaLine(item: SwipeItem): string {
+		let s = ''
+		if (item.score > 0) {
+			s = '评分 ' + item.score.toFixed(1)
+		}
+		if (item.episodeCount > 0) {
+			if (s.length > 0) {
+				s += ' · '
+			}
+			s += item.episodeCount + '集'
+		}
+		return s
+	}
+
+	function patchItem(idx: number, mut: (it: SwipeItem) => void) {
+		if (idx < 0 || idx >= items.value.length) {
+			return
+		}
+		const src = items.value[idx]
+		const next: SwipeItem = {
+			id: src.id,
+			title: src.title,
+			cover: src.cover,
+			score: src.score,
+			episodeCount: src.episodeCount,
+			ep: src.ep,
+			playUrl: src.playUrl,
+			playLoading: src.playLoading,
+			playError: src.playError,
+			liked: src.liked,
+			collected: src.collected
+		} as SwipeItem
+		mut(next)
+		items.value[idx] = next
+	}
+
+	function cardToItem(c: VideoCard): SwipeItem {
+		return {
+			id: c.id,
+			title: c.title,
+			cover: c.cover,
+			score: c.score,
+			episodeCount: c.episodeCount,
+			ep: 1,
+			playUrl: '',
+			playLoading: false,
+			playError: '',
+			liked: false,
+			collected: false
+		} as SwipeItem
+	}
+
+	function episodeToItem(detailId: string, title: string, cover: string, score: number, total: number, ep: EpisodeItem, liked: boolean, collected: boolean): SwipeItem {
+		return {
+			id: detailId,
+			title: title,
+			cover: cover,
+			score: score,
+			episodeCount: total,
+			ep: ep.epNum,
+			playUrl: '',
+			playLoading: false,
+			playError: ep.locked ? '本集未解锁' : '',
+			liked: liked,
+			collected: collected
+		} as SwipeItem
+	}
+
+	function shouldMountVideo(idx: number): boolean {
+		const c = current.value
+		return idx == c || idx == c - 1 || idx == c + 1
+	}
+
+	function requireLogin(): boolean {
+		if (isLoggedIn()) {
+			return true
+		}
+		uni.navigateTo({ url: '/pages/login/login' })
+		return false
+	}
+
+	function stopVideoAt(idx: number) {
+		if (idx < 0) {
+			return
+		}
+		try {
+			const ctx = uni.createVideoContext('swipeVideo' + idx)
+			ctx.pause()
+			ctx.seek(0)
+		} catch (_) { }
+	}
+
+	/** 停掉除 keep 外所有已挂载播放器，避免上一条音频残留 */
+	function stopOthers(keep: number) {
+		const n = items.value.length
+		for (let i = 0; i < n; i++) {
+			if (i != keep) {
+				stopVideoAt(i)
+			}
+		}
+	}
+
+	/** 切 Tab 时停掉当前±1 全部挂载播放器（保留当前进度，不 seek） */
+	function pauseAllMounted() {
+		const c = current.value
+		const n = items.value.length
+		for (let i = 0; i < n; i++) {
+			if (i < c - 1 || i > c + 1) {
+				continue
+			}
+			try {
+				const ctx = uni.createVideoContext('swipeVideo' + i)
+				ctx.pause()
+			} catch (_) { }
+		}
+	}
+
+	function onSeriesAction(idx: number) {
+		if (seriesMode.value) {
+			exitSeries()
+			return
+		}
+		enterSeries(idx)
+	}
+
+	async function enterSeries(idx: number) {
+		if (idx < 0 || idx >= items.value.length) {
+			return
+		}
+		const seed = items.value[idx]
+		if (seed.id.length == 0) {
+			return
+		}
+		if (speedBoost.value) {
+			setRate(idx, SPEED_NORMAL)
+			speedBoost.value = false
+		}
+		if (commentOpen.value) {
+			closeComments()
+		}
+		uni.showLoading({ title: '加载全集…', mask: true })
+		try {
+			const detail = await fetchVideoDetail(seed.id)
+			const eps = detail.episodes
+			const list: SwipeItem[] = [] as SwipeItem[]
+			for (let i = 0; i < eps.length; i++) {
+				const ep = eps[i]
+				// 锁定集仍放入列表，点开会提示；优先可播集
+				list.push(episodeToItem(
+					detail.id,
+					detail.title,
+					detail.cover,
+					detail.score,
+					detail.episodeCount > 0 ? detail.episodeCount : eps.length,
+					ep,
+					seed.liked,
+					seed.collected
+				))
+			}
+			if (list.length == 0) {
+				uni.showToast({ title: '暂无剧集', icon: 'none' })
+				return
+			}
+			// 快照推荐流，返回时可还原
+			feedSnapshot = items.value.slice(0)
+			feedCurrent = current.value
+			feedPage = page.value
+			feedPages = pages.value
+
+			pauseAllMounted()
+			seriesMode.value = true
+			items.value = list
+			// 从当前正在看的集切入（推荐流默认第 1 集）
+			let start = 0
+			for (let i = 0; i < list.length; i++) {
+				if (list[i].ep == seed.ep) {
+					start = i
+					break
+				}
+			}
+			current.value = start
+			paused.value = false
+			showSwipeHint.value = true
+			resetProgress()
+			ensurePlay(start)
+			ensurePlay(start + 1)
+			if (start > 0) {
+				ensurePlay(start - 1)
+			}
+			haptic('medium')
+			uni.showToast({ title: '上滑切换下一集', icon: 'none' })
+		} catch (e) {
+			console.log('[swipe] series ' + e)
+			uni.showToast({ title: '全集加载失败', icon: 'none' })
+		} finally {
+			uni.hideLoading()
+		}
+	}
+
+	function exitSeries() {
+		if (!seriesMode.value) {
+			return
+		}
+		if (speedBoost.value) {
+			setRate(current.value, SPEED_NORMAL)
+			speedBoost.value = false
+		}
+		if (commentOpen.value) {
+			closeComments()
+		}
+		pauseAllMounted()
+		seriesMode.value = false
+		if (feedSnapshot.length > 0) {
+			items.value = feedSnapshot
+			current.value = feedCurrent
+			page.value = feedPage
+			pages.value = feedPages
+		}
+		feedSnapshot = [] as SwipeItem[]
+		paused.value = false
+		showSwipeHint.value = false
+		resetProgress()
+		const idx = current.value
+		ensurePlay(idx)
+		ensurePlay(idx + 1)
+		setTimeout(() => {
+			if (current.value != idx || paused.value) {
+				return
+			}
+			try {
+				const ctx = uni.createVideoContext('swipeVideo' + idx)
+				ctx.play()
+			} catch (_) { }
+		}, 80)
+		haptic('light')
+	}
+
+	function setRate(idx: number, rate: number) {
+		try {
+			const ctx = uni.createVideoContext('swipeVideo' + idx)
+			ctx.playbackRate(rate)
+		} catch (e) {
+			console.log('[swipe] rate ' + e)
+		}
+	}
+
+	function touchPageY(e: UniTouchEvent): number {
+		try {
+			if (e.touches.length > 0) {
+				return e.touches[0].pageY
+			}
+		} catch (_) { }
+		try {
+			if (e.changedTouches.length > 0) {
+				return e.changedTouches[0].pageY
+			}
+		} catch (_) { }
+		return 0
+	}
+
+	function onGestureStart(e: UniTouchEvent) {
+		if (seeking.value || commentOpen.value || speedBoost.value) {
+			gestureActive = false
+			return
+		}
+		gestureActive = true
+		longPressFired = false
+		gestureDownAt = Date.now()
+		gestureDownX = touchPageX(e)
+		gestureDownY = touchPageY(e)
+		gestureLastX = gestureDownX
+		gestureLastY = gestureDownY
+	}
+
+	function onGestureMove(e: UniTouchEvent) {
+		if (!gestureActive) {
+			return
+		}
+		gestureLastX = touchPageX(e)
+		gestureLastY = touchPageY(e)
+	}
+
+	function onLongPressSpeed(idx: number) {
+		if (!gestureActive || idx != current.value || seeking.value || commentOpen.value) {
+			return
+		}
+		const it = items.value[idx]
+		if (it == null || it.playUrl.length == 0) {
+			return
+		}
+		longPressFired = true
+		speedBoost.value = true
+		paused.value = false
+		showSwipeHint.value = false
+		haptic('medium')
+		try {
+			const ctx = uni.createVideoContext('swipeVideo' + idx)
+			ctx.play()
+			ctx.playbackRate(SPEED_FAST)
+		} catch (e) {
+			console.log('[swipe] boost ' + e)
+		}
+	}
+
+	function endSpeedBoost() {
+		if (!speedBoost.value) {
+			return
+		}
+		speedBoost.value = false
+		const idx = current.value
+		setRate(idx, SPEED_NORMAL)
+		haptic('light')
+	}
+
+	function onGestureEnd(idx: number) {
+		// 长按倍速：松手恢复
+		if (speedBoost.value || longPressFired) {
+			endSpeedBoost()
+			gestureActive = false
+			longPressFired = false
+			return
+		}
+		if (!gestureActive) {
+			return
+		}
+		gestureActive = false
+		if (seeking.value || commentOpen.value || idx != current.value) {
+			return
+		}
+		const dx = gestureLastX - gestureDownX
+		const dy = gestureLastY - gestureDownY
+		if (dx > GESTURE_MOVE_CANCEL || dx < -GESTURE_MOVE_CANCEL || dy > GESTURE_MOVE_CANCEL || dy < -GESTURE_MOVE_CANCEL) {
+			return
+		}
+		const dt = Date.now() - gestureDownAt
+		if (dt < 30 || dt > 450) {
+			return
+		}
+		togglePause(idx)
+	}
+
+	function onGestureCancel() {
+		if (speedBoost.value || longPressFired) {
+			endSpeedBoost()
+		}
+		gestureActive = false
+		longPressFired = false
+	}
+
+	function togglePause(idx: number) {
+		if (speedBoost.value || seeking.value || commentOpen.value) {
+			return
+		}
+		if (idx != current.value) {
+			return
+		}
+		const it = items.value[idx]
+		if (it == null || it.playUrl.length == 0) {
+			return
+		}
+		const next = !paused.value
+		paused.value = next
+		haptic('light')
+		try {
+			const ctx = uni.createVideoContext('swipeVideo' + idx)
+			if (next) {
+				ctx.pause()
+			} else {
+				ctx.play()
+			}
+		} catch (e) {
+			console.log('[swipe] pause ' + e)
+		}
+	}
+
+	function onPlay(idx: number) {
+		if (idx == current.value) {
+			if (!paused.value) {
+				stopOthers(idx)
+			} else {
+				try {
+					const ctx = uni.createVideoContext('swipeVideo' + idx)
+					ctx.pause()
+				} catch (_) { }
+			}
+		} else {
+			stopVideoAt(idx)
+		}
+	}
+
+	function onPause(_idx: number) {
+		// 当前条以用户 paused 为准，避免播放器回调抖动
+	}
+
+	async function ensurePlay(idx: number) {
+		if (idx < 0 || idx >= items.value.length) {
+			return
+		}
+		const it = items.value[idx]
+		if (it.playUrl.length > 0 || it.playLoading) {
+			return
+		}
+		if (it.playError == '本集未解锁') {
+			return
+		}
+		const vid = it.id
+		const ep = it.ep > 0 ? it.ep : 1
+		patchItem(idx, (x) => {
+			x.playLoading = true
+			x.playError = ''
+		})
+		try {
+			const info = await fetchPlayback(vid, ep)
+			if (idx >= items.value.length || items.value[idx].id != vid || items.value[idx].ep != ep) {
+				return
+			}
+			patchItem(idx, (x) => {
+				x.playUrl = info.url
+				x.playLoading = false
+				x.playError = ''
+			})
+			visitVideo(vid)
+			if (isLoggedIn()) {
+				syncHistory(vid, ep)
+			}
+		} catch (e) {
+			console.log('[swipe] play ' + e)
+			if (idx >= items.value.length || items.value[idx].id != vid) {
+				return
+			}
+			const msg = ('' + e).toLowerCase()
+			const locked = msg.indexOf('lock') >= 0 || msg.indexOf('未解锁') >= 0 || msg.indexOf('403') >= 0
+			patchItem(idx, (x) => {
+				x.playUrl = ''
+				x.playLoading = false
+				x.playError = locked ? '本集未解锁' : '播放失败'
+			})
+		}
+	}
+
+	function retryPlay(idx: number) {
+		patchItem(idx, (x) => {
+			x.playUrl = ''
+			x.playLoading = false
+			x.playError = ''
+		})
+		ensurePlay(idx)
+	}
+
+	function releaseFarVideos(keep: number) {
+		for (let i = 0; i < items.value.length; i++) {
+			if (i < keep - 2 || i > keep + 2) {
+				const it = items.value[i]
+				if (it.playUrl.length > 0) {
+					stopVideoAt(i)
+					patchItem(i, (x) => {
+						x.playUrl = ''
+						x.playLoading = false
+						x.playError = ''
+					})
+				}
+			}
+		}
+	}
+
+	async function loadMore() {
+		if (seriesMode.value) {
+			return
+		}
+		if (loadingMore.value || page.value >= pages.value) {
+			return
+		}
+		loadingMore.value = true
+		try {
+			const res = await fetchFeedRecommend(page.value + 1)
+			const merged = items.value.slice(0)
+			for (let i = 0; i < res.items.length; i++) {
+				merged.push(cardToItem(res.items[i]))
+			}
+			items.value = merged
+			page.value = res.page
+			pages.value = res.pages
+		} catch (e) {
+			console.log('[swipe] more ' + e)
+		} finally {
+			loadingMore.value = false
+		}
+	}
+
+	function onSwiperChange(e: UniSwiperChangeEvent) {
+		if (commentOpen.value) {
+			closeComments()
+		}
+		let idx = current.value
+		try {
+			idx = e.detail.current
+		} catch (_) { }
+		const prev = current.value
+		if (prev != idx) {
+			if (speedBoost.value) {
+				setRate(prev, SPEED_NORMAL)
+				speedBoost.value = false
+			}
+			stopVideoAt(prev)
+			stopOthers(idx)
+		}
+		current.value = idx
+		paused.value = false
+		speedBoost.value = false
+		resetProgress()
+		if (idx > 0) {
+			showSwipeHint.value = false
+		}
+		ensurePlay(idx)
+		ensurePlay(idx + 1)
+		// 稍后再播当前，确保上一条已 pause
+		setTimeout(() => {
+			if (current.value != idx) {
+				return
+			}
+			try {
+				const ctx = uni.createVideoContext('swipeVideo' + idx)
+				ctx.play()
+			} catch (_) { }
+		}, 80)
+		releaseFarVideos(idx)
+		if (idx >= items.value.length - 3) {
+			loadMore()
+		}
+	}
+
+	function onPlayError(idx: number) {
+		patchItem(idx, (x) => {
+			x.playUrl = ''
+			x.playLoading = false
+			x.playError = '播放出错'
+		})
+	}
+
+	async function toggleLike(idx: number) {
+		if (!requireLogin() || idx < 0 || idx >= items.value.length) {
+			return
+		}
+		const it = items.value[idx]
+		const next = !it.liked
+		const ep = it.ep > 0 ? it.ep : 1
+		haptic('light')
+		try {
+			const ok = await likeVideo(it.id, ep, next)
+			patchItem(idx, (x) => { x.liked = ok })
+		} catch (e) {
+			uni.showToast({ title: '' + e, icon: 'none' })
+		}
+	}
+
+	async function toggleCollect(idx: number) {
+		if (!requireLogin() || idx < 0 || idx >= items.value.length) {
+			return
+		}
+		const it = items.value[idx]
+		const next = !it.collected
+		const ep = it.ep > 0 ? it.ep : 1
+		haptic('light')
+		try {
+			const ok = await collectVideo(it.id, ep, next)
+			patchItem(idx, (x) => { x.collected = ok })
+		} catch (e) {
+			uni.showToast({ title: '' + e, icon: 'none' })
+		}
+	}
+
+	function onCommentInput(e: UniInputEvent) {
+		try {
+			commentDraft.value = e.detail.value
+		} catch (_) { }
+	}
+
+	function appendCommentsUnique(list: CommentItem[]) {
+		const merged = comments.value.slice(0)
+		for (let i = 0; i < list.length; i++) {
+			const c = list[i]
+			let exists = false
+			for (let j = 0; j < merged.length; j++) {
+				if (merged[j].id == c.id && c.id > 0) {
+					exists = true
+					break
+				}
+			}
+			if (!exists) {
+				merged.push(c)
+			}
+		}
+		comments.value = merged
+	}
+
+	async function loadComments(videoId: string, reset: boolean) {
+		if (reset) {
+			commentLoading.value = true
+			comments.value = [] as CommentItem[]
+			commentTotal.value = 0
+			commentPage.value = 1
+			commentPages.value = 1
+		} else {
+			if (commentLoadingMore.value || commentPage.value >= commentPages.value) {
+				return
+			}
+			commentLoadingMore.value = true
+		}
+		const nextPage = reset ? 1 : (commentPage.value + 1)
+		try {
+			const res = await fetchComments(videoId, nextPage, COMMENT_PAGE_SIZE)
+			if (commentVideoId != videoId) {
+				return
+			}
+			if (reset) {
+				comments.value = res.items
+			} else {
+				appendCommentsUnique(res.items)
+			}
+			commentPage.value = res.page > 0 ? res.page : nextPage
+			commentPages.value = res.pages > 0 ? res.pages : 1
+			commentTotal.value = res.total > 0 ? res.total : comments.value.length
+			// 接口偶发 pages=1 但本页满额，继续试下一页
+			if (res.items.length >= COMMENT_PAGE_SIZE && commentPage.value >= commentPages.value && comments.value.length < commentTotal.value) {
+				commentPages.value = commentPage.value + 1
+			}
+		} catch (e) {
+			console.log('[swipe] comments ' + e)
+			if (reset) {
+				uni.showToast({ title: '评论加载失败', icon: 'none' })
+			}
+		} finally {
+			commentLoading.value = false
+			commentLoadingMore.value = false
+		}
+	}
+
+	function loadMoreComments() {
+		if (commentVideoId.length == 0) {
+			return
+		}
+		loadComments(commentVideoId, false)
+	}
+
+	function openComments(idx: number) {
+		if (idx < 0 || idx >= items.value.length) {
+			return
+		}
+		const it = items.value[idx]
+		if (it.id.length == 0) {
+			return
+		}
+		if (speedBoost.value) {
+			setRate(idx, SPEED_NORMAL)
+			speedBoost.value = false
+		}
+		gestureActive = false
+		longPressFired = false
+		commentVideoId = it.id
+		commentDraft.value = ''
+		commentOpen.value = true
+		haptic('light')
+		loadComments(it.id, true)
+	}
+
+	function closeComments() {
+		commentOpen.value = false
+		commentDraft.value = ''
+		commentVideoId = ''
+		commentLoadingMore.value = false
+	}
+
+	async function sendComment() {
+		if (!requireLogin()) {
+			return
+		}
+		const t = commentDraft.value.trim()
+		if (t.length == 0) {
+			uni.showToast({ title: '请输入评论', icon: 'none' })
+			return
+		}
+		if (commentVideoId.length == 0) {
+			return
+		}
+		try {
+			let ep = 1
+			const cur = items.value[current.value]
+			if (cur != null && cur.id == commentVideoId && cur.ep > 0) {
+				ep = cur.ep
+			}
+			await postComment(commentVideoId, t, ep)
+			commentDraft.value = ''
+			haptic('medium')
+			uni.showToast({ title: '已发送', icon: 'none' })
+			await loadComments(commentVideoId, true)
+		} catch (e) {
+			uni.showToast({ title: '' + e, icon: 'none' })
+		}
+	}
+
+	async function reload() {
+		booting.value = true
+		bootError.value = ''
+		seriesMode.value = false
+		feedSnapshot = [] as SwipeItem[]
+		items.value = [] as SwipeItem[]
+		current.value = 0
+		page.value = 1
+		pages.value = 1
+		paused.value = false
+		showSwipeHint.value = true
+		try {
+			await ensureEndpointReady()
+			const res = await fetchFeedRecommend(1)
+			const list: SwipeItem[] = [] as SwipeItem[]
+			for (let i = 0; i < res.items.length; i++) {
+				list.push(cardToItem(res.items[i]))
+			}
+			items.value = list
+			page.value = res.page
+			pages.value = res.pages
+			if (list.length > 0) {
+				ensurePlay(0)
+				ensurePlay(1)
+			}
+		} catch (e) {
+			bootError.value = '加载失败，点击重试'
+			console.log('[swipe] reload ' + e)
+		} finally {
+			booting.value = false
+		}
+	}
+
+	onLoad(() => {
+		reload()
+	})
+
+	onShow(() => {
+		pageVisible.value = true
+		try {
+			installLiquidTabBar()
+			syncLiquidTabIndex('/pages/swipe/swipe')
+		} catch (_) { }
+		if (resumeOnShow && items.value.length > 0) {
+			paused.value = false
+			resumeOnShow = false
+			const idx = current.value
+			setTimeout(() => {
+				if (!pageVisible.value || current.value != idx || paused.value) {
+					return
+				}
+				try {
+					const ctx = uni.createVideoContext('swipeVideo' + idx)
+					ctx.play()
+				} catch (_) { }
+			}, 80)
+		}
+	})
+
+	onHide(() => {
+		if (commentOpen.value) {
+			closeComments()
+		}
+		if (speedBoost.value) {
+			setRate(current.value, SPEED_NORMAL)
+			speedBoost.value = false
+		}
+		resumeOnShow = !paused.value
+		paused.value = true
+		pauseAllMounted()
+		// 卸掉 video：Tab 页保活时仅 pause 挡不住原生播放器残留音频
+		pageVisible.value = false
+	})
+
+	onUnload(() => {
+		if (speedBoost.value) {
+			setRate(current.value, SPEED_NORMAL)
+			speedBoost.value = false
+		}
+		resumeOnShow = false
+		paused.value = true
+		pageVisible.value = false
+		pauseAllMounted()
+	})
+</script>
+
+<style>
+	.root {
+		flex: 1;
+		background-color: #000000;
+	}
+
+	.nav {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		z-index: 20;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding-left: 14px;
+		padding-right: 14px;
+		padding-bottom: 10px;
+		background-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+	}
+
+	.nav-side {
+		width: 56px;
+		height: 40px;
+	}
+
+	.nav-back {
+		width: 40px;
+		height: 40px;
+		border-radius: 20px;
+		align-items: center;
+		justify-content: center;
+		background-color: rgba(26, 29, 38, 0.55);
+	}
+
+	.nav-press {
+		opacity: 0.75;
+	}
+
+	.nav-back-text {
+		color: #E8C27A;
+		font-size: 28px;
+		font-weight: bold;
+	}
+
+	.nav-title {
+		color: #F2F3F5;
+		font-size: 16px;
+		font-weight: bold;
+	}
+
+	.nav-count {
+		color: #A8ACB4;
+		font-size: 12px;
+		width: 56px;
+		text-align: right;
+	}
+
+	.swiper {
+		flex: 1;
+		background-color: #000000;
+	}
+
+	.slide {
+		flex: 1;
+		background-color: #000000;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.cover-layer {
+		position: absolute;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+	}
+
+	.player {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		background-color: transparent;
+	}
+
+	.tap-layer {
+		position: absolute;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 8;
+		/* 极淡底色保证可命中；过透在部分机型上点不中 */
+		background-color: rgba(0, 0, 0, 0.02);
+	}
+
+	.speed-badge {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 38%;
+		align-items: center;
+		z-index: 12;
+		pointer-events: none;
+	}
+
+	.speed-badge-text {
+		color: #E8C27A;
+		font-size: 15px;
+		font-weight: bold;
+		background-color: rgba(0, 0, 0, 0.45);
+		padding: 8px 16px;
+		border-radius: 16px;
+	}
+
+	.pause-badge {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		align-items: center;
+		justify-content: center;
+		z-index: 12;
+		pointer-events: none;
+	}
+
+	.pause-icon {
+		width: 64px;
+		height: 64px;
+		border-radius: 32px;
+		background-color: rgba(0, 0, 0, 0.45);
+		color: #E8C27A;
+		font-size: 28px;
+		text-align: center;
+		line-height: 64px;
+	}
+
+	.center-tip {
+		position: absolute;
+		left: 24px;
+		right: 24px;
+		top: 42%;
+		align-items: center;
+	}
+
+	.center-tip-text {
+		color: #F2F3F5;
+		font-size: 14px;
+		text-align: center;
+	}
+
+	.center-tip-sub {
+		margin-top: 10px;
+		color: #E8C27A;
+		font-size: 13px;
+	}
+
+	.hud-info {
+		position: absolute;
+		left: 14px;
+		right: 72px;
+		z-index: 18;
+	}
+
+	.hud-actions {
+		position: absolute;
+		right: 8px;
+		z-index: 26;
+		align-items: center;
+		width: 56px;
+	}
+
+	.prog-wrap {
+		position: absolute;
+		left: 0;
+		right: 0;
+		z-index: 24;
+		padding-left: 14px;
+		padding-right: 14px;
+		padding-top: 8px;
+		padding-bottom: 8px;
+	}
+
+	.seek-preview {
+		position: absolute;
+		bottom: 48px;
+		width: 96px;
+		align-items: center;
+		z-index: 6;
+	}
+
+	.seek-preview-frame {
+		width: 96px;
+		height: 128px;
+		border-radius: 6px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: rgba(255, 255, 255, 0.55);
+		overflow: hidden;
+		background-color: #1A1C20;
+	}
+
+	.seek-preview-time {
+		margin-top: 6px;
+		color: #F2F3F5;
+		font-size: 12px;
+		background-color: rgba(0, 0, 0, 0.45);
+		padding: 2px 8px;
+		border-radius: 10px;
+	}
+
+	.prog-times {
+		flex-direction: row;
+		justify-content: space-between;
+		margin-bottom: 6px;
+	}
+
+	.prog-times-hide {
+		opacity: 0;
+	}
+
+	.prog-time {
+		color: #C8CCD3;
+		font-size: 11px;
+	}
+
+	.prog-track {
+		height: 20px;
+		justify-content: center;
+		position: relative;
+	}
+
+	.prog-track-on {
+		height: 24px;
+	}
+
+	.prog-base {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 8px;
+		height: 3px;
+		border-radius: 2px;
+		background-color: rgba(255, 255, 255, 0.28);
+	}
+
+	.prog-base-on {
+		top: 9px;
+		height: 5px;
+		border-radius: 3px;
+		background-color: rgba(255, 255, 255, 0.35);
+	}
+
+	.prog-fill {
+		height: 3px;
+		border-radius: 2px;
+		background-color: #E8C27A;
+		position: absolute;
+		left: 0;
+		top: 8px;
+	}
+
+	.prog-fill-on {
+		top: 9px;
+		height: 5px;
+		border-radius: 3px;
+	}
+
+	.prog-thumb {
+		position: absolute;
+		top: 3px;
+		width: 14px;
+		height: 14px;
+		border-radius: 7px;
+		background-color: #E8C27A;
+	}
+
+	.prog-thumb-on {
+		width: 18px;
+		height: 18px;
+		border-radius: 9px;
+		top: 3px;
+	}
+
+	.badge-ep {
+		align-self: flex-start;
+		color: #1A1208;
+		font-size: 11px;
+		font-weight: bold;
+		background-color: #E8C27A;
+		padding: 3px 8px;
+		border-radius: 4px;
+		margin-bottom: 8px;
+	}
+
+	.title {
+		color: #FFFFFF;
+		font-size: 18px;
+		font-weight: bold;
+	}
+
+	.meta {
+		margin-top: 6px;
+		color: #C8CCD3;
+		font-size: 12px;
+	}
+
+	.act {
+		width: 52px;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.act-active {
+		opacity: 1;
+	}
+
+	.act-press {
+		opacity: 0.75;
+	}
+
+	.act-mark {
+		width: 46px;
+		height: 46px;
+		border-radius: 23px;
+		background-color: rgba(26, 29, 38, 0.78);
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+		color: #F2F3F5;
+		font-size: 14px;
+		font-weight: bold;
+		text-align: center;
+		line-height: 46px;
+		margin-bottom: 4px;
+	}
+
+	.act-icon {
+		font-size: 22px;
+		font-weight: normal;
+	}
+
+	.act-mark-like {
+		color: #FF5A6B;
+		background-color: rgba(40, 18, 22, 0.88);
+		border-color: #5A2A32;
+	}
+
+	.act-mark-star {
+		color: #E8C27A;
+		background-color: #2A2218;
+		border-color: #4A3A22;
+	}
+
+	.act-mark-gold {
+		color: #E8C27A;
+		border-color: #4A3A22;
+		background-color: #2A2218;
+	}
+
+	.act-label {
+		color: #C8CCD3;
+		font-size: 11px;
+	}
+
+	.cmt-mask {
+		position: absolute;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.55);
+		justify-content: flex-end;
+		z-index: 80;
+	}
+
+	.cmt-sheet {
+		background-color: #1A1D26;
+		border-top-left-radius: 18px;
+		border-top-right-radius: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+		overflow: hidden;
+	}
+
+	.cmt-handle-wrap {
+		align-items: center;
+		padding-top: 10px;
+		padding-bottom: 4px;
+	}
+
+	.cmt-handle {
+		width: 36px;
+		height: 4px;
+		border-radius: 2px;
+		background-color: #3A3E48;
+	}
+
+	.cmt-top {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 16px 10px 16px;
+	}
+
+	.cmt-title {
+		color: #F2F3F5;
+		font-size: 16px;
+		font-weight: bold;
+	}
+
+	.cmt-close {
+		color: #E8C27A;
+		font-size: 13px;
+		padding: 6px 10px;
+	}
+
+	.cmt-scroll {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+
+	.cmt-foot {
+		padding-top: 12px;
+		padding-bottom: 8px;
+		align-items: center;
+	}
+
+	.cmt-foot-text {
+		color: #6F737A;
+		font-size: 12px;
+	}
+
+	.cmt-empty {
+		padding-top: 40px;
+		align-items: center;
+	}
+
+	.cmt-empty-text {
+		color: #8A8E96;
+		font-size: 13px;
+	}
+
+	.cmt-item {
+		padding-top: 12px;
+		padding-bottom: 12px;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #2A2E38;
+	}
+
+	.cmt-user {
+		color: #E8C27A;
+		font-size: 12px;
+	}
+
+	.cmt-text {
+		margin-top: 6px;
+		color: #C8CCD3;
+		font-size: 14px;
+	}
+
+	.cmt-time {
+		margin-top: 6px;
+		color: #6F737A;
+		font-size: 11px;
+	}
+
+	.cmt-scroll-pad {
+		height: 16px;
+	}
+
+	.cmt-input-row {
+		flex-direction: row;
+		align-items: center;
+		padding-left: 12px;
+		padding-right: 12px;
+		padding-top: 10px;
+		border-top-width: 1px;
+		border-top-style: solid;
+		border-top-color: #2A2E38;
+		background-color: #161920;
+	}
+
+	.cmt-input {
+		flex: 1;
+		height: 40px;
+		padding-left: 12px;
+		padding-right: 12px;
+		border-radius: 20px;
+		background-color: #22262F;
+		color: #F2F3F5;
+		font-size: 14px;
+	}
+
+	.cmt-send {
+		margin-left: 10px;
+		padding-left: 14px;
+		padding-right: 14px;
+		height: 36px;
+		border-radius: 18px;
+		background-color: #E8C27A;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.cmt-send-press {
+		opacity: 0.8;
+	}
+
+	.cmt-send-text {
+		color: #1A1208;
+		font-size: 13px;
+		font-weight: bold;
+	}
+
+	.swipe-hint {
+		position: absolute;
+		left: 0;
+		right: 0;
+		align-items: center;
+	}
+
+	.swipe-hint-text {
+		color: rgba(232, 194, 122, 0.9);
+		font-size: 12px;
+		background-color: rgba(0, 0, 0, 0.35);
+		padding: 6px 12px;
+		border-radius: 12px;
+	}
+
+	.state {
+		flex: 1;
+		align-items: center;
+		justify-content: center;
+		background-color: #12141a;
+		padding: 24px;
+	}
+
+	.state-mark {
+		width: 56px;
+		height: 56px;
+		border-radius: 16px;
+		background-color: #2A261C;
+		color: #E8C27A;
+		font-size: 22px;
+		font-weight: bold;
+		text-align: center;
+		line-height: 56px;
+		margin-bottom: 14px;
+	}
+
+	.state-text {
+		color: #8A8E96;
+		font-size: 14px;
+		text-align: center;
+	}
+
+	.state-action {
+		margin-top: 12px;
+		color: #E8C27A;
+		font-size: 13px;
+	}
+</style>

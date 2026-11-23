@@ -1,10 +1,11 @@
 <template>
-	<view class="hg-cover" :style="boxStyle">
+	<view class="hg-cover" :class="fit ? 'hg-cover-fit' : ''" :style="boxStyle">
 		<image
 			v-if="localSrc.length > 0"
 			class="hg-cover-img"
+			:class="fit ? 'hg-cover-img-fit' : ''"
 			:src="localSrc"
-			mode="aspectFill"
+			:mode="imgMode"
 			@error="onImgError"
 		></image>
 		<view v-else class="hg-cover-placeholder" :style="placeholderStyle">
@@ -21,18 +22,30 @@
 		width: { type: Number, default: 110 },
 		height: { type: Number, default: 150 },
 		radius: { type: Number, default: 8 },
-		placeholder: { type: String, default: '' }
+		placeholder: { type: String, default: '' },
+		/** true：按原图比例撑开高度，不裁切横/竖图 */
+		fit: { type: Boolean, default: false }
 	})
 
 	const localSrc = ref('')
 	let requestToken = 0
 	let retryCount = 0
 
+	const imgMode = computed((): string => {
+		return props.fit ? 'widthFix' : 'aspectFill'
+	})
+
 	const boxStyle = computed((): string => {
+		if (props.fit) {
+			return 'width:' + props.width + 'px;border-radius:' + props.radius + 'px;'
+		}
 		return 'width:' + props.width + 'px;height:' + props.height + 'px;border-radius:' + props.radius + 'px;'
 	})
 
 	const placeholderStyle = computed((): string => {
+		if (props.fit) {
+			return 'border-radius:' + props.radius + 'px;height:120px;'
+		}
 		return 'border-radius:' + props.radius + 'px;'
 	})
 
@@ -90,9 +103,17 @@
 		background-color: #2a2a2e;
 	}
 
+	.hg-cover-fit {
+		background-color: #1A1D26;
+	}
+
 	.hg-cover-img {
 		width: 100%;
 		height: 100%;
+	}
+
+	.hg-cover-img-fit {
+		height: auto;
 	}
 
 	.hg-cover-placeholder {

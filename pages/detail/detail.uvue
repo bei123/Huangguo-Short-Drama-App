@@ -263,7 +263,7 @@
 			fetchRelated(videoId.value, 1).then((res) => {
 				related.value = res.items
 			}).catch((_) => { })
-			fetchComments(videoId.value, 1).then((res) => {
+			fetchComments(videoId.value, 1, 50).then((res) => {
 				comments.value = res.items
 			}).catch((_) => { })
 		} catch (e) {
@@ -379,7 +379,7 @@
 			await postComment(videoId.value, t, currentEp.value)
 			commentText.value = ''
 			uni.showToast({ title: '已提交', icon: 'none' })
-			const res = await fetchComments(videoId.value, 1)
+			const res = await fetchComments(videoId.value, 1, 50)
 			comments.value = res.items
 		} catch (e) {
 			uni.showToast({ title: '' + e, icon: 'none' })

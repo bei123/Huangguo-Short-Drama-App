@@ -4,9 +4,9 @@ import UIKit
 @objc public final class GlassTabHost: NSObject {
 	public static let shared = GlassTabHost()
 
-	private let titles = ["首页", "发现", "搜索", "我的"]
-	private let iconNames = ["hg_tab_home", "hg_tab_cate", "hg_tab_search", "hg_tab_mine"]
-	private let activeIconNames = ["hg_tab_home_active", "hg_tab_cate_active", "hg_tab_search_active", "hg_tab_mine_active"]
+	private let titles = ["首页", "发现", "刷", "搜索", "我的"]
+	private let iconNames = ["hg_tab_home", "hg_tab_cate", "hg_tab_swipe", "hg_tab_search", "hg_tab_mine"]
+	private let activeIconNames = ["hg_tab_home_active", "hg_tab_cate_active", "hg_tab_swipe_active", "hg_tab_search_active", "hg_tab_mine_active"]
 	/// 黄果香槟金（对应 Music 选中蓝）
 	private let accent = UIColor(red: 232 / 255, green: 194 / 255, blue: 122 / 255, alpha: 1)
 	private let idle = UIColor(white: 0.72, alpha: 1)

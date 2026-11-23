@@ -1,6 +1,64 @@
-export const HG_BASE_URL = 'https://huangguoai.com'
-export const HG_PIC_CDN = 'https://pic.qnlycc.cn'
+/** 与 hg-edge 共用，改地址后两边都读这个 key */
+export const HG_API_BASE_KEY = 'hg_api_base'
+
+/** 多线路入口（无尾斜杠）；探测后选延迟最低者 */
+export const HG_ENDPOINTS: string[] = [
+	'https://thu.aqkmowihz.cc',
+	'https://hust.kplsifomz.cc',
+	'https://jlu.aqkmowihz.cc',
+	'https://ruc.kplsifomz.cc',
+	'https://sdu.aqkmowihz.cc',
+	'https://nju.kplsifomz.cc',
+	'https://ea3.aqkmowihz.cc',
+	'https://fh0sm.aqkmowihz.cc',
+	'https://m47ts.aqkmowihz.cc',
+	'https://tapnr.kplsifomz.cc',
+	'https://huangguoai.com'
+]
+
+/** CDN 图片 Referer 仍用主站（文档约定） */
 export const HG_REFERER = 'https://huangguoai.com/'
+export const HG_PIC_CDN = 'https://pic.qnlycc.cn'
+
+/** 探测前默认走主站，避免首包打到未知镜像 */
+export const HG_DEFAULT_BASE = 'https://huangguoai.com'
+
+let memoryBase = ''
+
+export function normalizeBaseUrl(raw: string): string {
+	let s = raw.trim()
+	while (s.length > 0 && s.charAt(s.length - 1) == '/') {
+		s = s.substring(0, s.length - 1)
+	}
+	return s
+}
+
+export function getHgBaseUrl(): string {
+	if (memoryBase.length > 0) {
+		return memoryBase
+	}
+	const cached = uni.getStorageSync(HG_API_BASE_KEY) as string | null
+	if (cached != null && cached.length > 0) {
+		memoryBase = normalizeBaseUrl(cached as string)
+		return memoryBase
+	}
+	memoryBase = HG_DEFAULT_BASE
+	return memoryBase
+}
+
+/** 兼容旧常量写法：取值时请优先 getHgBaseUrl() */
+export const HG_BASE_URL = HG_DEFAULT_BASE
+
+export function setHgBaseUrl(url: string): boolean {
+	const next = normalizeBaseUrl(url)
+	if (next.length == 0) {
+		return false
+	}
+	const prev = getHgBaseUrl()
+	memoryBase = next
+	uni.setStorageSync(HG_API_BASE_KEY, next)
+	return prev != next
+}
 
 export function resolveCoverUrl(raw: string): string {
 	if (raw.length == 0) {
