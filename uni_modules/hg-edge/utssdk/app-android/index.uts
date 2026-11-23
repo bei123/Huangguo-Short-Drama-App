@@ -1,4 +1,4 @@
-import { EdgeRequest, DecryptImage, FetchDecryptImage, RandomHex32, ClearEdgeSessions } from '../interface.uts'
+import { EdgeRequest, DecryptImage, FetchDecryptImage, RandomHex32, ClearEdgeSessions, BodyPointSize } from '../interface.uts'
 import { DxCrypto } from 'uts.sdk.modules.hgEdge'
 import { UTSAndroid } from 'io.dcloud.uts'
 
@@ -392,4 +392,9 @@ export const randomHex32: RandomHex32 = function (): string {
 export const clearEdgeSessions: ClearEdgeSessions = function (): void {
 	sessions.clear()
 	handshaking.clear()
+}
+
+/** Android 不走 Dynamic Type，固定返回基准 17 */
+export const bodyPointSize: BodyPointSize = function (): number {
+	return 17
 }

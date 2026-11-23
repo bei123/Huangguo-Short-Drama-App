@@ -8,7 +8,7 @@
 					<text class="avatar-text">{{avatarLetter}}</text>
 				</view>
 				<view class="profile-meta">
-					<text class="name">{{displayName}}</text>
+					<text class="name" :style="nameFontStyle">{{displayName}}</text>
 					<text class="sign" max-lines="1">{{displaySign}}</text>
 				</view>
 				<text class="profile-action">{{loggedIn ? '编辑' : '登录'}}</text>
@@ -90,8 +90,10 @@
 	import { fetchUnreadCount } from '../../common/api/interact.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
 
 	const pagePadStyle = 'padding: 16px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+	const nameFontStyle = ref(fontStyle(20))
 
 	const loggedIn = ref(false)
 	const displayName = ref('点击登录')
@@ -184,12 +186,34 @@
 	}
 
 	async function doLogout() {
+		// #ifdef APP-IOS
+		// HIG 7.2：破坏性操作需确认，避免误触
+		uni.showModal({
+			title: '退出登录',
+			content: '退出后本地同步的收藏与历史将需重新登录查看。',
+			confirmText: '退出',
+			confirmColor: '#E07070',
+			cancelText: '取消',
+			success: (res) => {
+				if (res.confirm) {
+					logout().then(() => {
+						applyUser(null)
+						uni.showToast({ title: '已退出', icon: 'none' })
+					})
+				}
+			}
+		})
+		// #endif
+		// #ifndef APP-IOS
 		await logout()
 		applyUser(null)
 		uni.showToast({ title: '已退出', icon: 'none' })
+		// #endif
 	}
 
 	onShow(() => {
+		refreshTypeScale()
+		nameFontStyle.value = fontStyle(20)
 		refresh()
 		try {
 			installLiquidTabBar()
@@ -343,4 +367,25 @@
 		color: #E07070;
 		font-size: 15px;
 	}
+
+	/* #ifdef APP-IOS */
+	.profile-action {
+		font-size: 15px;
+		padding: 10px 16px;
+		min-height: 24px;
+		border-radius: 16px;
+	}
+	.stat {
+		min-height: 44px;
+		justify-content: center;
+	}
+	.menu-item {
+		min-height: 44px;
+		padding: 14px 16px;
+	}
+	.logout {
+		height: 50px;
+		border-radius: 12px;
+	}
+	/* #endif */
 </style>

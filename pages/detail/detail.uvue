@@ -3,32 +3,58 @@
 	<scroll-view class="page" direction="vertical">
 	<!-- #endif -->
 		<view class="page-inner">
+			<!-- #ifdef APP-IOS -->
+			<hg-skeleton v-if="loading" kind="detail"></hg-skeleton>
+			<!-- #endif -->
+			<!-- #ifndef APP-IOS -->
 			<view v-if="loading" class="state-box">
 				<text class="state-text">加载中…</text>
 			</view>
+			<!-- #endif -->
 			<view v-else-if="errorText.length > 0" class="state-box" @click="loadDetail">
 				<text class="state-text">{{errorText}}</text>
 				<text class="state-action">点击重试</text>
 			</view>
 			<template v-else-if="detail != null">
-				<video
-					v-if="playUrl.length > 0"
-					class="player"
-					:style="{ height: playerH + 'px' }"
-					:src="playUrl"
-					:autoplay="true"
-					:controls="true"
-					:show-center-play-btn="true"
-					object-fit="contain"
-					@error="onPlayError"
-				></video>
-				<view v-else class="player-placeholder" :style="{ height: playerH + 'px' }">
-					<hg-cover :src="detail!.cover" :width="playerW" :height="playerH" :radius="0"></hg-cover>
-					<text class="player-tip">{{playTip}}</text>
+				<view class="player-wrap" :style="{ height: playerH + 'px' }">
+					<video
+						v-if="playUrl.length > 0"
+						id="detailPlayer"
+						class="player"
+						:style="{ height: playerH + 'px' }"
+						:src="playUrl"
+						:autoplay="true"
+						:controls="true"
+						:show-center-play-btn="true"
+						:show-play-btn="true"
+						:show-fullscreen-btn="true"
+						:show-progress="true"
+						:show-loading="true"
+						:enable-progress-gesture="true"
+						object-fit="contain"
+						@play="onVideoPlay"
+						@pause="onVideoPause"
+						@ended="onVideoPause"
+						@error="onPlayError"
+					></video>
+					<view v-else class="player-placeholder" :style="{ height: playerH + 'px' }">
+						<hg-cover :src="detail!.cover" :width="playerW" :height="playerH" :radius="0"></hg-cover>
+						<text class="player-tip">{{playTip}}</text>
+					</view>
+					<!-- iOS 原生 controls 图标常缺失：叠一层可点的中心播放按钮 -->
+					<!-- #ifdef APP-IOS -->
+					<view
+						v-if="playUrl.length > 0 && !videoPlaying"
+						class="center-play"
+						@click="tapCenterPlay"
+					>
+						<text class="center-play-icon">▶</text>
+					</view>
+					<!-- #endif -->
 				</view>
 
 				<view class="info">
-					<text class="title">{{detail!.title}}</text>
+					<text class="title" :style="titleFontStyle">{{detail!.title}}</text>
 					<text class="meta">评分 {{detail!.score > 0 ? detail!.score.toFixed(1) : '-'}} · {{detail!.isFinished ? '已完结' : '连载中'}} · {{detail!.episodeCount}}集</text>
 					<text class="meta">热度 {{formatCount(detail!.hot)}} · 点赞 {{formatCount(detail!.like)}} · 收藏 {{formatCount(detail!.collect)}}</text>
 					<text v-if="detail!.authorName.length > 0" class="meta author-link" @click="goAuthor">作者 {{detail!.authorName}} ›</text>
@@ -149,9 +175,12 @@
 	import { CommentItem } from '../../common/models/extra.uts'
 	import { isLoggedIn, getUser } from '../../common/auth/session.uts'
 	import { fetchMe } from '../../common/api/account.uts'
+	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
+	import { uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
 
 	const playerW = uni.getWindowInfo().windowWidth
 	const playerH = Math.floor(playerW * 0.56)
+	const titleFontStyle = ref(fontStyle(20))
 	const videoId = ref('')
 	const preferEp = ref(0)
 	const loading = ref(true)
@@ -162,6 +191,7 @@
 	const playTip = ref('点击选集开始播放')
 	const expiresAt = ref(0)
 	const playLoading = ref(false)
+	const videoPlaying = ref(false)
 	const liked = ref(false)
 	const collected = ref(false)
 	const showComments = ref(false)
@@ -263,6 +293,7 @@
 		playLoading.value = true
 		playTip.value = '获取播放地址…'
 		currentEp.value = ep
+		videoPlaying.value = false
 		try {
 			const info = await fetchPlayback(videoId.value, ep)
 			playUrl.value = info.url
@@ -282,6 +313,7 @@
 
 	function onPlayError() {
 		playUrl.value = ''
+		videoPlaying.value = false
 		playTip.value = '播放出错，点击选集重试'
 	}
 
@@ -367,7 +399,27 @@
 		})
 	}
 
+	function onVideoPlay() {
+		videoPlaying.value = true
+	}
+
+	function onVideoPause() {
+		videoPlaying.value = false
+	}
+
+	function tapCenterPlay() {
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.play()
+			videoPlaying.value = true
+		} catch (e) {
+			console.log('[detail] createVideoContext play fail ' + e)
+		}
+	}
+
 	onLoad((options) => {
+		refreshTypeScale()
+		titleFontStyle.value = fontStyle(20)
 		videoId.value = options['id'] ?? ''
 		const epRaw = options['ep'] ?? '0'
 		const epNum = parseFloat(epRaw)
@@ -379,6 +431,13 @@
 		}
 		loadDetail()
 	})
+
+	onShow(() => {
+		// 详情非 Tab 页：收起液态玻璃，避免挡住播放器底部控件
+		try {
+			uninstallLiquidTabBar()
+		} catch (_) { }
+	})
 </script>
 
 <style>
@@ -387,6 +446,12 @@
 	.state-box { padding-top: 100px; align-items: center; padding-left: 24px; padding-right: 24px; }
 	.state-text { color: #8A8E96; font-size: 14px; text-align: center; }
 	.state-action { margin-top: 12px; color: #E8C27A; font-size: 13px; }
+	.player-wrap {
+		width: 100%;
+		background-color: #000000;
+		position: relative;
+		overflow: hidden;
+	}
 	.player { width: 100%; height: 220px; background-color: #000000; }
 	.player-placeholder {
 		width: 100%; background-color: #000000;
@@ -396,6 +461,25 @@
 	.player-tip {
 		position: absolute; color: #ffffff; font-size: 13px;
 		background-color: rgba(0, 0, 0, 0.5); padding: 8px 12px; border-radius: 8px;
+	}
+	.center-play {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		align-items: center;
+		justify-content: center;
+	}
+	.center-play-icon {
+		width: 64px;
+		height: 64px;
+		border-radius: 32px;
+		background-color: rgba(0, 0, 0, 0.55);
+		color: #E8C27A;
+		font-size: 28px;
+		text-align: center;
+		line-height: 64px;
 	}
 	.info { padding: 16px; }
 	.title { color: #F2F3F5; font-size: 20px; font-weight: bold; }
@@ -463,7 +547,7 @@
 	.block { padding: 4px 16px 8px 16px; }
 	.ep-head {
 		flex-direction: row;
-		align-items: baseline;
+		align-items: flex-end;
 		justify-content: space-between;
 		margin-top: 8px;
 		margin-bottom: 12px;
@@ -512,4 +596,53 @@
 	.rel-row { height: 210px; flex-direction: row; }
 	.footer-tip { text-align: center; color: #6F737A; font-size: 12px; padding: 8px; }
 	.bottom-space { height: 32px; }
+
+	/* #ifdef APP-IOS */
+	.act {
+		height: 44px;
+		border-radius: 12px;
+	}
+	.act-text {
+		font-size: 14px;
+	}
+	.rate-cancel {
+		padding: 12px;
+		min-width: 44px;
+		text-align: center;
+	}
+	.rate-ok {
+		height: 44px;
+		padding-left: 20px;
+		padding-right: 20px;
+		border-radius: 10px;
+	}
+	.tag {
+		font-size: 13px;
+		padding: 10px 12px;
+		border-radius: 8px;
+	}
+	.desc-toggle {
+		font-size: 15px;
+		padding: 8px 0;
+	}
+	.ep-item {
+		width: 56px;
+		height: 44px;
+		border-radius: 10px;
+	}
+	.comment-input {
+		height: 44px;
+		font-size: 16px;
+		border-radius: 12px;
+	}
+	.comment-send {
+		height: 44px;
+		padding-left: 16px;
+		padding-right: 16px;
+		border-radius: 12px;
+	}
+	.comment-send-text {
+		font-size: 15px;
+	}
+	/* #endif */
 </style>

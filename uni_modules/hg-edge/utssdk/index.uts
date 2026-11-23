@@ -7,7 +7,8 @@ import {
 	DecryptImage,
 	FetchDecryptImage,
 	RandomHex32,
-	ClearEdgeSessions
+	ClearEdgeSessions,
+	BodyPointSize
 } from './interface.uts'
 
 export type {
@@ -15,7 +16,8 @@ export type {
 	DecryptImage,
 	FetchDecryptImage,
 	RandomHex32,
-	ClearEdgeSessions
+	ClearEdgeSessions,
+	BodyPointSize
 } from './interface.uts'
 
 function notSupported(name: string): Error {
@@ -46,4 +48,8 @@ export const randomHex32: RandomHex32 = function (): string {
 
 export const clearEdgeSessions: ClearEdgeSessions = function (): void {
 	// no-op on non-Android
+}
+
+export const bodyPointSize: BodyPointSize = function (): number {
+	return 17
 }

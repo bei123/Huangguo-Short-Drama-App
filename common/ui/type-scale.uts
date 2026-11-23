@@ -1,0 +1,46 @@
+/**
+ * iOS Dynamic Type 缩放（相对系统 body 17pt）。
+ * Android 恒为 1，不改变安卓字号。
+ */
+import { bodyPointSize } from '@/uni_modules/hg-edge'
+
+const IOS_BODY_BASE = 17.0
+let cachedScale: number = 1.0
+
+export function getTypeScale(): number {
+	return cachedScale
+}
+
+export function refreshTypeScale(): number {
+	// #ifdef APP-IOS
+	try {
+		const pt = bodyPointSize()
+		if (pt > 0) {
+			let s = pt / IOS_BODY_BASE
+			if (s < 0.85) {
+				s = 0.85
+			}
+			if (s > 1.35) {
+				s = 1.35
+			}
+			cachedScale = s
+		}
+	} catch (e) {
+		console.log('[type-scale] refresh fail ' + e)
+		cachedScale = 1.0
+	}
+	// #endif
+	// #ifndef APP-IOS
+	cachedScale = 1.0
+	// #endif
+	return cachedScale
+}
+
+export function scaledPx(base: number): number {
+	return Math.round(base * cachedScale)
+}
+
+/** 生成 font-size 内联样式，便于绑定到 text */
+export function fontStyle(base: number): string {
+	return 'font-size:' + scaledPx(base) + 'px'
+}

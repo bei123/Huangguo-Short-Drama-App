@@ -1,0 +1,40 @@
+import {
+	ShowLiquidTabBar,
+	HideLiquidTabBar,
+	SetLiquidTabIndex,
+	LiquidTabSelect,
+	CreateHgGlassPanel,
+	HgGlassHandle
+} from '../interface.uts'
+import { GlassTabHost } from 'GlassTabHost'
+
+let userCallback: LiquidTabSelect | null = null
+
+export const showLiquidTabBar: ShowLiquidTabBar = function (onSelect: LiquidTabSelect): void {
+	userCallback = onSelect
+	GlassTabHost.shared.show((index: number): void => {
+		const cb = userCallback
+		if (cb != null) {
+			cb(index)
+		}
+	})
+}
+
+export const hideLiquidTabBar: HideLiquidTabBar = function (): void {
+	userCallback = null
+	GlassTabHost.shared.hide()
+}
+
+export const setLiquidTabIndex: SetLiquidTabIndex = function (index: number): void {
+	GlassTabHost.shared.setIndex(index)
+}
+
+export const createHgGlassPanel: CreateHgGlassPanel = function (
+	_element: UniNativeViewElement,
+	_cornerRadiusDp: number,
+	_tintArgb: number
+): HgGlassHandle {
+	return {
+		destroy: () => {}
+	} as HgGlassHandle
+}

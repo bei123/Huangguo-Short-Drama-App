@@ -224,4 +224,18 @@
 	.post-title { color: #f2f2f2; font-size: 14px; text-overflow: ellipsis; }
 	.post-sub { margin-top: 6px; color: #8a8e96; font-size: 11px; }
 	.empty { text-align: center; color: #6f737a; font-size: 13px; padding: 30px; }
+
+	/* #ifdef APP-IOS */
+	.follow-btn {
+		font-size: 15px;
+		padding: 10px 16px;
+		border-radius: 16px;
+		min-height: 24px;
+	}
+	.tab {
+		padding-top: 10px;
+		padding-bottom: 12px;
+		min-height: 24px;
+	}
+	/* #endif */
 </style>

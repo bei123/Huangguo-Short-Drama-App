@@ -3,7 +3,10 @@
 	<scroll-view class="page" direction="vertical">
 	<!-- #endif -->
 		<view class="page-inner" :style="pagePadStyle">
-			<text class="page-title">发现</text>
+			<!-- #ifdef APP-IOS -->
+			<view class="status-spacer" :style="statusSpacerStyle"></view>
+			<!-- #endif -->
+			<text class="page-title" :style="titleFontStyle">发现</text>
 			<text class="page-desc">分类 · 榜单 · 专题入口</text>
 
 			<text class="group-title">内容分类</text>
@@ -97,8 +100,11 @@
 	import { CategoryItem } from '../../common/models/video.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
 
 	const pagePadStyle = 'padding: 16px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+	const statusSpacerStyle = 'height:' + uni.getWindowInfo().statusBarHeight + 'px'
+	const titleFontStyle = ref(fontStyle(28))
 
 	const categories = ref<CategoryItem[]>([] as CategoryItem[])
 	const errorText = ref('')
@@ -140,6 +146,8 @@
 	})
 
 	onShow(() => {
+		refreshTypeScale()
+		titleFontStyle.value = fontStyle(28)
 		try {
 			installLiquidTabBar()
 			syncLiquidTabIndex('/pages/category/category')
@@ -305,4 +313,35 @@
 		color: #8A8E96;
 		font-size: 13px;
 	}
+
+	/* #ifdef APP-IOS */
+	.status-spacer {
+		width: 100%;
+	}
+	.page-title {
+		font-size: 28px;
+	}
+	.page-desc {
+		font-size: 15px;
+	}
+	.group-title {
+		font-size: 17px;
+	}
+	.grid-item {
+		padding-top: 18px;
+		padding-bottom: 16px;
+		min-height: 44px;
+	}
+	.rank-card {
+		padding: 16px 12px;
+		min-height: 44px;
+	}
+	.rank-desc {
+		font-size: 12px;
+	}
+	.entry {
+		min-height: 44px;
+		padding: 16px;
+	}
+	/* #endif */
 </style>

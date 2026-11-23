@@ -1,0 +1,280 @@
+<template>
+	<view class="sk" :class="'sk-' + kind">
+		<template v-if="kind == 'home'">
+			<view class="sk-quick">
+				<view class="sk-block sk-quick-item"></view>
+				<view class="sk-block sk-quick-item"></view>
+				<view class="sk-block sk-quick-item sk-quick-last"></view>
+			</view>
+			<view class="sk-block sk-banner"></view>
+			<view class="sk-line sk-title"></view>
+			<view class="sk-row">
+				<view v-for="i in cardCount" :key="i" class="sk-card">
+					<view class="sk-block sk-cover"></view>
+					<view class="sk-line sk-card-t"></view>
+					<view class="sk-line sk-card-s"></view>
+				</view>
+			</view>
+			<view class="sk-line sk-title"></view>
+			<view class="sk-row">
+				<view v-for="i in cardCount" :key="'b' + i" class="sk-card">
+					<view class="sk-block sk-cover"></view>
+					<view class="sk-line sk-card-t"></view>
+					<view class="sk-line sk-card-s"></view>
+				</view>
+			</view>
+		</template>
+		<template v-else-if="kind == 'detail'">
+			<view class="sk-block sk-player"></view>
+			<view class="sk-pad">
+				<view class="sk-line sk-detail-t"></view>
+				<view class="sk-line sk-detail-m"></view>
+				<view class="sk-line sk-detail-m2"></view>
+				<view class="sk-act">
+					<view class="sk-block sk-act-item"></view>
+					<view class="sk-block sk-act-item"></view>
+					<view class="sk-block sk-act-item"></view>
+					<view class="sk-block sk-act-item sk-act-last"></view>
+				</view>
+				<view class="sk-line sk-title"></view>
+				<view class="sk-ep">
+					<view v-for="i in epCount" :key="i" class="sk-block sk-ep-item"></view>
+				</view>
+			</view>
+		</template>
+		<template v-else-if="kind == 'search'">
+			<view class="sk-line sk-title"></view>
+			<view class="sk-chips">
+				<view v-for="i in chipCount" :key="i" class="sk-block sk-chip"></view>
+			</view>
+			<view class="sk-line sk-title"></view>
+			<view v-for="i in resultCount" :key="'r' + i" class="sk-result">
+				<view class="sk-block sk-result-cover"></view>
+				<view class="sk-result-meta">
+					<view class="sk-line sk-result-t"></view>
+					<view class="sk-line sk-result-s"></view>
+				</view>
+			</view>
+		</template>
+		<template v-else>
+			<!-- list -->
+			<view class="sk-grid">
+				<view v-for="i in gridCount" :key="i" class="sk-grid-item">
+					<view class="sk-block sk-grid-cover"></view>
+					<view class="sk-line sk-grid-t"></view>
+				</view>
+			</view>
+		</template>
+	</view>
+</template>
+
+<script setup lang="uts">
+	defineProps({
+		kind: { type: String, default: 'list' }
+	})
+	const cardCount = [1, 2, 3, 4]
+	const epCount = [1, 2, 3, 4, 5, 6, 7, 8]
+	const chipCount = [1, 2, 3, 4, 5, 6]
+	const resultCount = [1, 2, 3]
+	const gridCount = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+</script>
+
+<style>
+	.sk {
+		padding-top: 8px;
+		padding-bottom: 24px;
+	}
+
+	.sk-block {
+		background-color: #1A1D26;
+		border-radius: 10px;
+	}
+
+	.sk-line {
+		background-color: #1A1D26;
+		border-radius: 6px;
+		height: 14px;
+	}
+
+	.sk-quick {
+		flex-direction: row;
+		margin-bottom: 16px;
+	}
+
+	.sk-quick-item {
+		flex: 1;
+		height: 64px;
+		margin-right: 10px;
+		border-radius: 12px;
+	}
+
+	.sk-quick-last {
+		margin-right: 0;
+	}
+
+	.sk-banner {
+		height: 160px;
+		border-radius: 14px;
+		margin-bottom: 20px;
+	}
+
+	.sk-title {
+		width: 96px;
+		height: 18px;
+		margin-bottom: 12px;
+		margin-top: 8px;
+	}
+
+	.sk-row {
+		flex-direction: row;
+		margin-bottom: 12px;
+	}
+
+	.sk-card {
+		width: 112px;
+		margin-right: 12px;
+	}
+
+	.sk-cover {
+		width: 112px;
+		height: 154px;
+		border-radius: 10px;
+	}
+
+	.sk-card-t {
+		margin-top: 8px;
+		width: 96px;
+		height: 12px;
+	}
+
+	.sk-card-s {
+		margin-top: 6px;
+		width: 64px;
+		height: 10px;
+	}
+
+	.sk-player {
+		width: 100%;
+		height: 210px;
+		border-radius: 0;
+	}
+
+	.sk-pad {
+		padding: 16px;
+	}
+
+	.sk-detail-t {
+		width: 70%;
+		height: 22px;
+		margin-bottom: 12px;
+	}
+
+	.sk-detail-m {
+		width: 55%;
+		height: 12px;
+		margin-bottom: 8px;
+	}
+
+	.sk-detail-m2 {
+		width: 40%;
+		height: 12px;
+		margin-bottom: 16px;
+	}
+
+	.sk-act {
+		flex-direction: row;
+		margin-bottom: 20px;
+	}
+
+	.sk-act-item {
+		flex: 1;
+		height: 44px;
+		margin-right: 8px;
+		border-radius: 12px;
+	}
+
+	.sk-act-last {
+		margin-right: 0;
+	}
+
+	.sk-ep {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.sk-ep-item {
+		width: 56px;
+		height: 44px;
+		margin-right: 8px;
+		margin-bottom: 8px;
+		border-radius: 10px;
+	}
+
+	.sk-chips {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-bottom: 16px;
+	}
+
+	.sk-chip {
+		width: 72px;
+		height: 36px;
+		margin-right: 8px;
+		margin-bottom: 8px;
+		border-radius: 10px;
+	}
+
+	.sk-result {
+		flex-direction: row;
+		margin-bottom: 16px;
+		padding: 10px;
+		background-color: #16181F;
+		border-radius: 12px;
+	}
+
+	.sk-result-cover {
+		width: 84px;
+		height: 112px;
+		border-radius: 8px;
+	}
+
+	.sk-result-meta {
+		flex: 1;
+		margin-left: 12px;
+		justify-content: center;
+	}
+
+	.sk-result-t {
+		width: 80%;
+		height: 16px;
+		margin-bottom: 10px;
+	}
+
+	.sk-result-s {
+		width: 50%;
+		height: 12px;
+	}
+
+	.sk-grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+		justify-content: space-between;
+	}
+
+	.sk-grid-item {
+		width: 31%;
+		margin-bottom: 16px;
+	}
+
+	.sk-grid-cover {
+		width: 100%;
+		height: 140px;
+		border-radius: 10px;
+	}
+
+	.sk-grid-t {
+		margin-top: 8px;
+		width: 80%;
+		height: 12px;
+	}
+</style>

@@ -1,5 +1,7 @@
 unpackage/
 SSL/
 *.log
-
 .hbuilderx/
+.DS_Store
+**/.DS_Store
+node_modules/

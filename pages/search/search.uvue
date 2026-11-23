@@ -47,9 +47,14 @@
 					</view>
 				</template>
 				<template v-else>
+					<!-- #ifdef APP-IOS -->
+					<hg-skeleton v-if="loading && items.length == 0" kind="search"></hg-skeleton>
+					<!-- #endif -->
+					<!-- #ifndef APP-IOS -->
 					<view v-if="loading && items.length == 0" class="state-box">
 						<text class="state-text">搜索中…</text>
 					</view>
+					<!-- #endif -->
 					<view v-else-if="errorText.length > 0 && items.length == 0" class="state-box">
 						<text class="state-text">{{errorText}}</text>
 					</view>
@@ -318,4 +323,29 @@
 	.result-desc { margin-top: 6px; color: #6F737A; font-size: 12px; text-overflow: ellipsis; }
 	.footer-tip { text-align: center; color: #6F737A; font-size: 12px; padding: 12px; }
 	.suggest-list { margin-top: 4px; }
+
+	/* #ifdef APP-IOS */
+	.search-box {
+		height: 44px;
+		border-radius: 12px;
+	}
+	.search-input {
+		height: 44px;
+		font-size: 16px;
+	}
+	.search-btn {
+		height: 44px;
+		border-radius: 12px;
+		min-width: 64px;
+	}
+	.search-btn-text {
+		font-size: 16px;
+	}
+	.hot-chip {
+		font-size: 15px;
+		padding: 12px 16px;
+		border-radius: 10px;
+		min-height: 20px;
+	}
+	/* #endif */
 </style>

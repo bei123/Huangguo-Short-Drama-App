@@ -150,4 +150,21 @@
 		color: #E07070;
 		font-size: 13px;
 	}
+
+	/* #ifdef APP-IOS */
+	.tab {
+		padding-top: 10px;
+		padding-bottom: 12px;
+		min-height: 24px;
+	}
+	.input {
+		height: 50px;
+		font-size: 17px;
+		border-radius: 12px;
+	}
+	.btn {
+		height: 50px;
+		border-radius: 12px;
+	}
+	/* #endif */
 </style>

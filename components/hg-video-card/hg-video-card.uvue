@@ -113,4 +113,18 @@
 		font-size: 11px;
 		text-overflow: ellipsis;
 	}
+
+	/* #ifdef APP-IOS */
+	/* HIG 3.5：正文/标签不低于 11pt */
+	.card-badge-text {
+		font-size: 11px;
+	}
+	.card-badge {
+		padding-left: 8px;
+		padding-right: 8px;
+		padding-top: 3px;
+		padding-bottom: 3px;
+		border-radius: 4px;
+	}
+	/* #endif */
 </style>

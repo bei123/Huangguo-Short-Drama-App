@@ -1,5 +1,6 @@
 <script setup>
 	import { installLiquidTabBar } from './common/ui/liquid-tab.uts'
+	import { refreshTypeScale } from './common/ui/type-scale.uts'
 
 	// #ifdef APP-ANDROID || APP-HARMONY
 	let firstBackTime = 0
@@ -7,18 +8,27 @@
 
 	onLaunch(() => {
 		console.log('[app] launch Huangguo Short Drama')
-		// Activity 就绪后再挂载原生液态玻璃 TabBar（需自定义基座）
+		refreshTypeScale()
+		// 各 tab 页 onShow 也会 install；此处再补一次，确保 UTS 回调挂上
+		// #ifdef APP-IOS
+		const delay = 600
+		// #endif
+		// #ifndef APP-IOS
+		const delay = 400
+		// #endif
 		setTimeout(() => {
 			try {
 				installLiquidTabBar()
 			} catch (e) {
 				console.log('[liquid-tab] install fail ' + e)
 			}
-		}, 400)
+		}, delay)
 	})
 
 	onAppShow(() => {
 		console.log('[app] show')
+		// 用户改完系统字号回到前台时同步 Dynamic Type
+		refreshTypeScale()
 	})
 
 	onAppHide(() => {

@@ -4,9 +4,12 @@
 	<scroll-view class="scroll" direction="vertical" @scrolltolower="onScrollLower">
 	<!-- #endif -->
 		<view class="page-inner">
+			<!-- #ifdef APP-IOS -->
+			<view class="status-spacer" :style="statusSpacerStyle"></view>
+			<!-- #endif -->
 			<view class="brand-bar">
 				<view class="brand-left">
-					<text class="brand">黄果</text>
+					<text class="brand" :style="brandFontStyle">黄果</text>
 				</view>
 				<view class="search-box">
 					<input
@@ -26,9 +29,14 @@
 
 			<!-- 搜索结果态 -->
 			<template v-if="searching">
+				<!-- #ifdef APP-IOS -->
+				<hg-skeleton v-if="searchLoading && searchItems.length == 0" kind="search"></hg-skeleton>
+				<!-- #endif -->
+				<!-- #ifndef APP-IOS -->
 				<view v-if="searchLoading && searchItems.length == 0" class="state-box">
 					<text class="state-text">搜索中…</text>
 				</view>
+				<!-- #endif -->
 				<view v-else-if="searchError.length > 0 && searchItems.length == 0" class="state-box" @click="doSearch">
 					<text class="state-text">{{searchError}}</text>
 					<text class="state-action">点击重试</text>
@@ -62,9 +70,14 @@
 					<text class="state-text">{{errorText}}</text>
 					<text class="state-action">点击重试</text>
 				</view>
+				<!-- #ifdef APP-IOS -->
+				<hg-skeleton v-else-if="loading" kind="home"></hg-skeleton>
+				<!-- #endif -->
+				<!-- #ifndef APP-IOS -->
 				<view v-else-if="loading" class="state-box">
 					<text class="state-text">加载中…</text>
 				</view>
+				<!-- #endif -->
 				<template v-else>
 					<view class="quick-row">
 						<view class="quick-item" hover-class="quick-hover" @click="goRank">
@@ -92,7 +105,7 @@
 
 					<view class="section">
 						<view class="section-head">
-							<text class="section-title">精选推荐</text>
+							<text class="section-title" :style="sectionFontStyle">精选推荐</text>
 						</view>
 						<scroll-view class="row" direction="horizontal" :show-scrollbar="false">
 							<hg-video-card
@@ -110,7 +123,7 @@
 
 					<view class="section">
 						<view class="section-head">
-							<text class="section-title">最近更新</text>
+							<text class="section-title" :style="sectionFontStyle">最近更新</text>
 							<text class="section-more" @click="goLatest">更多</text>
 						</view>
 						<scroll-view class="row" direction="horizontal" :show-scrollbar="false">
@@ -129,7 +142,7 @@
 
 					<view v-if="topicRec.length > 0" class="section">
 						<view class="section-head">
-							<text class="section-title">精选专题</text>
+							<text class="section-title" :style="sectionFontStyle">精选专题</text>
 							<text class="section-more" @click="goTopics">更多</text>
 						</view>
 						<scroll-view class="topic-row" direction="horizontal" :show-scrollbar="false">
@@ -143,7 +156,7 @@
 
 					<view v-for="cate in cateRec" :key="cate.cateId" class="section">
 						<view class="section-head">
-							<text class="section-title">{{cate.cateName}}</text>
+							<text class="section-title" :style="sectionFontStyle">{{cate.cateName}}</text>
 						</view>
 						<scroll-view class="row" direction="horizontal" :show-scrollbar="false">
 							<hg-video-card
@@ -173,11 +186,22 @@
 	import { HomeBanner, VideoCard, CateRec, TopicLite } from '../../common/models/video.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
 
-	const winW = uni.getWindowInfo().windowWidth
+	const winInfo = uni.getWindowInfo()
+	const winW = winInfo.windowWidth
 	const bannerW = winW - 32
 	const bannerH = Math.floor(bannerW * 0.5)
 	const bottomGapStyle = 'height:' + TAB_BOTTOM_GAP + 'px'
+	const statusSpacerStyle = 'height:' + winInfo.statusBarHeight + 'px'
+	const brandFontStyle = ref(fontStyle(28))
+	const sectionFontStyle = ref(fontStyle(17))
+
+	function syncTypeStyles() {
+		refreshTypeScale()
+		brandFontStyle.value = fontStyle(28)
+		sectionFontStyle.value = fontStyle(17)
+	}
 
 	const loading = ref(true)
 	const errorText = ref('')
@@ -326,6 +350,7 @@
 	})
 
 	onShow(() => {
+		syncTypeStyles()
 		try {
 			installLiquidTabBar()
 			syncLiquidTabIndex('/pages/home/home')
@@ -599,4 +624,45 @@
 	.bottom-space {
 		height: 20px;
 	}
+
+	/* #ifdef APP-IOS */
+	.status-spacer {
+		width: 100%;
+	}
+	.brand-bar {
+		padding-top: 8px;
+		padding-bottom: 16px;
+	}
+	.brand {
+		font-size: 28px;
+	}
+	/* HIG 1.1: 交互控件最小 44×44pt */
+	.search-box {
+		height: 44px;
+		border-radius: 12px;
+	}
+	.search-input {
+		height: 44px;
+		font-size: 17px;
+	}
+	.search-clear {
+		font-size: 15px;
+		padding: 10px 8px;
+		min-width: 44px;
+		text-align: center;
+	}
+	.search-go {
+		font-size: 15px;
+		padding: 10px 14px;
+		min-height: 36px;
+		border-radius: 10px;
+	}
+	.section-title {
+		font-size: 17px;
+	}
+	.section-more {
+		font-size: 15px;
+		padding: 12px 4px 12px 16px;
+	}
+	/* #endif */
 </style>

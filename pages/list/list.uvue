@@ -3,9 +3,14 @@
 	<scroll-view class="page" direction="vertical" @scrolltolower="loadMore">
 	<!-- #endif -->
 		<view class="page-inner">
+			<!-- #ifdef APP-IOS -->
+			<hg-skeleton v-if="loading && items.length == 0" kind="list"></hg-skeleton>
+			<!-- #endif -->
+			<!-- #ifndef APP-IOS -->
 			<view v-if="loading && items.length == 0" class="state-box">
 				<text class="state-text">加载中…</text>
 			</view>
+			<!-- #endif -->
 			<view v-else-if="errorText.length > 0 && items.length == 0" class="state-box" @click="reload">
 				<text class="state-text">{{errorText}}</text>
 				<text class="state-action">点击重试</text>

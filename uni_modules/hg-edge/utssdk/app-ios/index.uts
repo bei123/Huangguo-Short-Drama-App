@@ -1,0 +1,342 @@
+import { EdgeRequest, DecryptImage, FetchDecryptImage, RandomHex32, ClearEdgeSessions, BodyPointSize } from '../interface.uts';
+import { DxCrypto } from 'DxCrypto';
+import { FontMetrics } from 'FontMetrics';
+const BASE_URL = 'https://huangguoai.com';
+const VISITOR_KEY = 'hg_visitor_id';
+type EdgeSession = {
+    privB64: string;
+    kid: string;
+    sid: string;
+    info: string;
+    reqKey: string;
+    resKey: string;
+    seq: number;
+    expiresAt: number;
+    clockOffset: number;
+};
+const sessions = new Map<string, EdgeSession | null>();
+const handshaking = new Map<string, Promise<EdgeSession> | null>();
+function nowSec(): number {
+    return Math.floor(Date.now() / 1000);
+}
+function getVisitorId(): string {
+    const cached = uni.getStorageSync(VISITOR_KEY) as string | null;
+    if (cached != null && (cached as string).length == 32) {
+        return cached as string;
+    }
+    const id = DxCrypto.randomHex('16');
+    uni.setStorageSync(VISITOR_KEY, id);
+    return id;
+}
+function postJson(url: string, bodyObj: UTSJSONObject): Promise<UTSJSONObject> {
+    return new Promise<UTSJSONObject>((resolve, reject) => {
+        uni.request({
+            url: url,
+            method: 'POST',
+            header: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            } as UTSJSONObject,
+            data: bodyObj,
+            timeout: 30000,
+            success: (res) => {
+                const statusCode = res.statusCode;
+                const data = res.data;
+                if (statusCode == null || statusCode < 200 || statusCode >= 300) {
+                    let errText = 'http ' + (statusCode ?? 0);
+                    if (data != null) {
+                        errText = errText + ' ' + JSON.stringify(data);
+                    }
+                    reject(new Error(errText));
+                    return;
+                }
+                if (data == null) {
+                    reject(new Error('empty response'));
+                    return;
+                }
+                if (data instanceof UTSJSONObject) {
+                    resolve(data as UTSJSONObject);
+                    return;
+                }
+                try {
+                    const parsed = JSON.parse(JSON.stringify(data)) as UTSJSONObject;
+                    resolve(parsed);
+                }
+                catch (e) {
+                    reject(new Error('invalid json response'));
+                }
+            },
+            fail: (err) => {
+                reject(new Error(err.errMsg ?? 'network fail'));
+            }
+        });
+    });
+}
+function sessionValid(s: EdgeSession): boolean {
+    return (s.expiresAt - nowSec()) > 5 && s.seq < 16384;
+}
+async function handshake(scope: string): Promise<EdgeSession> {
+    const pending = handshaking.get(scope);
+    if (pending != null) {
+        return await pending!;
+    }
+    const task = doHandshake(scope);
+    handshaking.set(scope, task);
+    try {
+        const s = await task;
+        sessions.set(scope, s);
+        return s;
+    }
+    finally {
+        handshaking.set(scope, null);
+    }
+}
+async function doHandshake(scope: string): Promise<EdgeSession> {
+    const kpJson = DxCrypto.generateClientKeyPair();
+    const kp = JSON.parse(kpJson) as UTSJSONObject;
+    const privB64 = kp.getString('priv') ?? '';
+    const pubB64url = kp.getString('pub') ?? '';
+    if (privB64.length == 0 || pubB64url.length == 0) {
+        throw new Error('keypair empty');
+    }
+    const helloBody = {
+        v: 1,
+        type: 'hello',
+        client_pub: pubB64url
+    } as UTSJSONObject;
+    const localAtHello = nowSec();
+    const helloRes = await postJson(BASE_URL + '/api/' + scope + '/request', helloBody);
+    const kid = helloRes.getString('kid') ?? '';
+    const sid = helloRes.getString('sid') ?? '';
+    const serverPub = helloRes.getString('server_pub') ?? '';
+    const salt = helloRes.getString('salt') ?? '';
+    const site = helloRes.getString('site') ?? 'huangguoai.com';
+    const serverTime = helloRes.getNumber('server_time') ?? 0;
+    const expiresAt = helloRes.getNumber('expires_at') ?? 0;
+    if (kid.length == 0 || sid.length == 0 || serverPub.length == 0 || salt.length == 0) {
+        throw new Error('hello incomplete');
+    }
+    if (!(expiresAt > serverTime) || (expiresAt - serverTime) > 600) {
+        throw new Error('hello expires invalid');
+    }
+    const derivedJson = DxCrypto.deriveSessionKeys(privB64, serverPub, salt, scope, site, kid, sid);
+    const derived = JSON.parse(derivedJson) as UTSJSONObject;
+    const reqKey = derived.getString('req') ?? '';
+    const resKey = derived.getString('res') ?? '';
+    const info = derived.getString('info') ?? '';
+    if (reqKey.length == 0 || resKey.length == 0 || info.length == 0) {
+        throw new Error('derive failed');
+    }
+    const session: EdgeSession = {
+        privB64: privB64,
+        kid: kid,
+        sid: sid,
+        info: info,
+        reqKey: reqKey,
+        resKey: resKey,
+        seq: 1,
+        expiresAt: expiresAt as number,
+        clockOffset: (serverTime as number) - localAtHello
+    };
+    return session;
+}
+async function ensureSession(scope: string): Promise<EdgeSession> {
+    const cur = sessions.get(scope);
+    if (cur != null && sessionValid(cur!)) {
+        return cur!;
+    }
+    return await handshake(scope);
+}
+function jsonEscape(s: string): string {
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+        const ch = s.charAt(i);
+        if (ch == '\\') {
+            out += '\\\\';
+        }
+        else if (ch == '"') {
+            out += '\\"';
+        }
+        else if (ch == '\n') {
+            out += '\\n';
+        }
+        else if (ch == '\r') {
+            out += '\\r';
+        }
+        else if (ch == '\t') {
+            out += '\\t';
+        }
+        else {
+            out += ch;
+        }
+    }
+    return out;
+}
+function normalizePath(raw: string): string {
+    let p = raw.trim();
+    const scheme = p.indexOf('://');
+    if (scheme >= 0) {
+        const slash = p.indexOf('/', scheme + 3);
+        if (slash >= 0) {
+            p = p.substring(slash);
+        }
+    }
+    return p.trim();
+}
+function buildInnerRequest(method: string, path: string, bodyJson: string, authToken: string): string {
+    const visitorId = getVisitorId();
+    const methodUp = method.toUpperCase();
+    const pathNorm = normalizePath(path);
+    let bodyB64 = '';
+    let contentType = '';
+    if (bodyJson.length > 0) {
+        bodyB64 = DxCrypto.stdB64EncodeUtf8(bodyJson);
+        contentType = 'application/json';
+    }
+    const req = '{"method":"' + jsonEscape(methodUp) +
+        '","path":"' + jsonEscape(pathNorm) +
+        '","body":"' + jsonEscape(bodyB64) +
+        '","content_type":"' + jsonEscape(contentType) +
+        '","visitor_id":"' + jsonEscape(visitorId) +
+        '","channel_code":""}';
+    if (authToken.length > 0) {
+        return '{"request":' + req + ',"authorization":"Bearer ' + jsonEscape(authToken) + '"}';
+    }
+    return '{"request":' + req + '}';
+}
+async function callOnce(scope: string, session: EdgeSession, method: string, path: string, bodyJson: string, authToken: string): Promise<string> {
+    const seqInt = Math.floor(session.seq as number);
+    const tsInt = Math.floor((nowSec() + session.clockOffset) as number);
+    const seqStr = '' + seqInt;
+    const tsStr = '' + tsInt;
+    const plaintext = buildInnerRequest(method, path, bodyJson, authToken);
+    const aadReq = session.info + '\nreq\n' + seqStr + '\n' + tsStr;
+    const ciphertext = DxCrypto.aesGcmEncrypt(session.reqKey, seqStr, aadReq, plaintext);
+    const callBody = {
+        v: 1,
+        type: 'call',
+        kid: session.kid,
+        sid: session.sid,
+        seq: seqInt,
+        ts: tsInt,
+        ciphertext: ciphertext
+    } as UTSJSONObject;
+    let callRes: UTSJSONObject;
+    try {
+        callRes = await postJson(BASE_URL + '/api/' + scope + '/request', callBody);
+    }
+    catch (e) {
+        const msg = '' + e;
+        if (msg.indexOf('session_expired') >= 0) {
+            throw new Error('session_expired');
+        }
+        throw e as Error;
+    }
+    const rType = callRes.getString('type') ?? '';
+    if (rType == 'error') {
+        const err = callRes.getString('error') ?? 'edge error';
+        if (err.indexOf('session_expired') >= 0) {
+            throw new Error('session_expired');
+        }
+        throw new Error(err);
+    }
+    const rKid = callRes.getString('kid') ?? '';
+    const rSid = callRes.getString('sid') ?? '';
+    const rSeq = Math.floor((callRes.getNumber('seq') ?? -1) as number);
+    const rTs = Math.floor((callRes.getNumber('ts') ?? -1) as number);
+    const rCipher = callRes.getString('ciphertext') ?? '';
+    if (rKid != session.kid || rSid != session.sid || rSeq != seqInt || rTs != tsInt) {
+        throw new Error('response mismatch');
+    }
+    if (rCipher.length == 0) {
+        throw new Error('empty ciphertext');
+    }
+    const aadRes = session.info + '\nres\n' + seqStr + '\n' + tsStr;
+    const wrappedJson = DxCrypto.aesGcmDecrypt(session.resKey, seqStr, aadRes, rCipher);
+    session.seq = seqInt + 1;
+    sessions.set(scope, session);
+    const wrapped = JSON.parse(wrappedJson) as UTSJSONObject;
+    const httpStatus = wrapped.getNumber('status') ?? 0;
+    const bodyB64 = wrapped.getString('body') ?? '';
+    if (httpStatus != 200) {
+        let decoded = '';
+        if (bodyB64.length > 0) {
+            try {
+                decoded = DxCrypto.stdB64DecodeToUtf8(bodyB64);
+            }
+            catch (_) { }
+        }
+        if (decoded.indexOf('session_expired') >= 0) {
+            throw new Error('session_expired');
+        }
+        throw new Error('inner http ' + httpStatus + ' ' + decoded);
+    }
+    if (bodyB64.length == 0) {
+        return '{}';
+    }
+    return DxCrypto.stdB64DecodeToUtf8(bodyB64);
+}
+function isRecoverableEdgeError(msg: string): boolean {
+    return msg.indexOf('session_expired') >= 0 || msg.indexOf('replay') >= 0;
+}
+async function edgeRequestLocked(scope: string, method: string, path: string, bodyJson: string, authToken: string): Promise<string> {
+    let session = await ensureSession(scope);
+    try {
+        return await callOnce(scope, session, method, path, bodyJson, authToken);
+    }
+    catch (e) {
+        const msg = '' + e;
+        if (!isRecoverableEdgeError(msg)) {
+            throw e as Error;
+        }
+        sessions.set(scope, null);
+        session = await handshake(scope);
+        return await callOnce(scope, session, method, path, bodyJson, authToken);
+    }
+}
+function sleepMs(ms: number): Promise<void> {
+    return new Promise<void>((resolve, _reject) => {
+        setTimeout(() => {
+            resolve(void 0);
+        }, ms);
+    });
+}
+async function enqueueScope(scope: string, fn: () => Promise<string>): Promise<string> {
+    const ticket = DxCrypto.nextScopeTicket(scope);
+    let guard = 0;
+    while (DxCrypto.scopeServing(scope) + 1 < ticket) {
+        await sleepMs(8);
+        guard++;
+        if (guard > 2500) {
+            throw new Error('scope queue timeout ' + scope);
+        }
+    }
+    try {
+        return await fn();
+    }
+    finally {
+        DxCrypto.advanceScopeServing(scope, ticket);
+    }
+}
+export const edgeRequest: EdgeRequest = async function (scope: string, method: string, path: string, bodyJson: string, authToken: string): Promise<string> {
+    return await enqueueScope(scope, async (): Promise<string> => {
+        return await edgeRequestLocked(scope, method, path, bodyJson, authToken);
+    });
+};
+export const decryptImage: DecryptImage = function (cipherB64: string): string {
+    return DxCrypto.decryptImageAesCbc(cipherB64);
+};
+export const fetchDecryptImage: FetchDecryptImage = function (url: string): string {
+    const cacheDir = uni.env.USER_DATA_PATH + '/hg_covers';
+    return DxCrypto.fetchDecryptImageToFile(url, cacheDir);
+};
+export const randomHex32: RandomHex32 = function (): string {
+    return DxCrypto.randomHex('16');
+};
+export const clearEdgeSessions: ClearEdgeSessions = function (): void {
+    sessions.clear();
+    handshaking.clear();
+};
+export const bodyPointSize: BodyPointSize = function (): number {
+    return FontMetrics.bodyPointSize();
+};
