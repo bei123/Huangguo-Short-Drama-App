@@ -1,0 +1,59 @@
+import {
+	ShowLiquidTabBar,
+	HideLiquidTabBar,
+	SetLiquidTabIndex,
+	LiquidTabSelect,
+	CreateHgGlassPanel,
+	HgGlassHandle
+} from '../interface.uts'
+import { UTSAndroid } from 'io.dcloud.uts'
+import { GlassTabHost, GlassPanelFactory } from 'uts.sdk.modules.hgLiquidGlass'
+import LiquidGlassView from 'com.example.liquidglass.LiquidGlassView'
+
+const GOLD = -1527622 // 0xFFE8C27A as signed 32-bit
+
+let userCallback: LiquidTabSelect | null = null
+
+export const showLiquidTabBar: ShowLiquidTabBar = function (onSelect: LiquidTabSelect): void {
+	const act = UTSAndroid.getUniActivity()
+	if (act == null) {
+		console.log('[hg-liquid-glass] no activity')
+		return
+	}
+	userCallback = onSelect
+	GlassTabHost.show(act!, GOLD, (index: number): void => {
+		console.log('[hg-liquid-glass] bridge ' + index)
+		const cb = userCallback
+		if (cb != null) {
+			cb(index)
+		}
+	})
+}
+
+export const hideLiquidTabBar: HideLiquidTabBar = function (): void {
+	const act = UTSAndroid.getUniActivity()
+	userCallback = null
+	GlassTabHost.hide(act)
+}
+
+export const setLiquidTabIndex: SetLiquidTabIndex = function (index: number): void {
+	GlassTabHost.setIndex(index)
+}
+
+export const createHgGlassPanel: CreateHgGlassPanel = function (
+	element: UniNativeViewElement,
+	cornerRadiusDp: number,
+	tintArgb: number
+): HgGlassHandle {
+	const act = element.getAndroidActivity()
+	let glass: LiquidGlassView | null = null
+	if (act != null) {
+		glass = GlassPanelFactory.create(act!, cornerRadiusDp, tintArgb)
+		element.bindAndroidView(glass!)
+	}
+	return {
+		destroy: () => {
+			glass = null
+		}
+	} as HgGlassHandle
+}

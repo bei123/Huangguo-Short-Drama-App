@@ -1,0 +1,32 @@
+{
+  "id": "hg-liquid-glass",
+  "displayName": "黄果液态玻璃",
+  "version": "1.1.0",
+  "description": "基于 Liquid-Glass-Android：TabBar + GlassPanel（native-view）",
+  "keywords": ["huangguo", "liquid-glass", "tabbar", "glass"],
+  "engines": {
+    "HBuilderX": "^4.25"
+  },
+  "dcloudext": {
+    "type": "uts",
+    "sale": {
+      "regular": {
+        "price": "0.00"
+      }
+    }
+  },
+  "uni_modules": {
+    "dependencies": [],
+    "encrypt": [],
+    "platforms": {
+      "client": {
+        "App": {
+          "app-android": {
+            "minVersion": "24"
+          },
+          "app-ios": "n"
+        }
+      }
+    }
+  }
+}

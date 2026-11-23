@@ -1,0 +1,29 @@
+/**
+ * 加密通道请求：走 /api/<scope>/request
+ * @param scope public | dynamic | playback | user
+ * @param method 目标接口 HTTP 方法
+ * @param path 目标路径（含查询串）
+ * @param bodyJson 目标请求体 JSON 字符串；无体传空串
+ * @param authToken user 通道 Bearer token；无则空串
+ * @returns 业务响应 JSON 字符串（内层 body 解码后）
+ */
+export type EdgeRequest = (scope: string, method: string, path: string, bodyJson: string, authToken: string) => Promise<string>
+
+/**
+ * AES-128-CBC 解密图片密文
+ * @param cipherB64 密文字节的标准 base64
+ * @returns 明文图片字节的标准 base64；失败抛错
+ */
+export type DecryptImage = (cipherB64: string) => string
+
+/**
+ * 下载加密图片并解密到本地缓存，返回绝对路径
+ */
+export type FetchDecryptImage = (url: string) => string
+
+/**
+ * 生成 16 字节随机数并转 hex（visitor_id）
+ */
+export type RandomHex32 = () => string
+
+export type ClearEdgeSessions = () => void

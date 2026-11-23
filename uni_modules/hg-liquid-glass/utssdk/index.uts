@@ -1,0 +1,42 @@
+/**
+ * 跨端占位。Android 优先用 app-android/index.uts。
+ */
+import {
+	LiquidTabSelect,
+	ShowLiquidTabBar,
+	HideLiquidTabBar,
+	SetLiquidTabIndex,
+	CreateHgGlassPanel,
+	HgGlassHandle
+} from './interface.uts'
+
+export type {
+	LiquidTabSelect,
+	ShowLiquidTabBar,
+	HideLiquidTabBar,
+	SetLiquidTabIndex,
+	CreateHgGlassPanel,
+	HgGlassHandle
+} from './interface.uts'
+
+export const showLiquidTabBar: ShowLiquidTabBar = function (_onSelect: LiquidTabSelect): void {
+	console.log('[hg-liquid-glass] showLiquidTabBar 仅支持 Android')
+}
+
+export const hideLiquidTabBar: HideLiquidTabBar = function (): void {
+	// no-op
+}
+
+export const setLiquidTabIndex: SetLiquidTabIndex = function (_index: number): void {
+	// no-op
+}
+
+export const createHgGlassPanel: CreateHgGlassPanel = function (
+	_element: UniNativeViewElement,
+	_cornerRadiusDp: number,
+	_tintArgb: number
+): HgGlassHandle {
+	return {
+		destroy: () => {}
+	} as HgGlassHandle
+}

@@ -1,0 +1,26 @@
+/**
+ * Tab 选中回调：0 首页 / 1 发现 / 2 搜索 / 3 我的
+ */
+export type LiquidTabSelect = (index: number) => void
+
+export type ShowLiquidTabBar = (onSelect: LiquidTabSelect) => void
+
+export type HideLiquidTabBar = () => void
+
+export type SetLiquidTabIndex = (index: number) => void
+
+/**
+ * 玻璃面板句柄
+ */
+export type HgGlassHandle = {
+	destroy: () => void
+}
+
+/**
+ * 将 LiquidGlassView 绑定到 native-view
+ */
+export type CreateHgGlassPanel = (
+	element: UniNativeViewElement,
+	cornerRadiusDp: number,
+	tintArgb: number
+) => HgGlassHandle

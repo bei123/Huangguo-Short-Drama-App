@@ -1,0 +1,7 @@
+{
+  "minSdkVersion": "24",
+  "abis": ["arm64-v8a", "armeabi-v7a"],
+  "dependencies": [
+    "com.github.QWEA0:Liquid-Glass-Android:v2.0.11"
+  ]
+}

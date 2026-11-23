@@ -1,0 +1,32 @@
+{
+  "id": "hg-edge",
+  "displayName": "黄果 dx150 加密通道",
+  "version": "1.0.6",
+  "description": "dx150-edge-v1 ECDH/HKDF/AES-GCM + 图片 AES-CBC",
+  "keywords": ["huangguo", "edge", "crypto"],
+  "engines": {
+    "HBuilderX": "^4.25"
+  },
+  "dcloudext": {
+    "type": "uts",
+    "sale": {
+      "regular": {
+        "price": "0.00"
+      }
+    }
+  },
+  "uni_modules": {
+    "dependencies": [],
+    "encrypt": [],
+    "platforms": {
+      "client": {
+        "App": {
+          "app-android": {
+            "minVersion": "21"
+          },
+          "app-ios": "n"
+        }
+      }
+    }
+  }
+}

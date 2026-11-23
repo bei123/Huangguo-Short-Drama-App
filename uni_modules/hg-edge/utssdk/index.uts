@@ -1,0 +1,49 @@
+/**
+ * 跨端占位实现。Android 优先用 app-android/index.uts。
+ * 根入口必须导出同名函数，否则 uts-proxy 报 not exported。
+ */
+import {
+	EdgeRequest,
+	DecryptImage,
+	FetchDecryptImage,
+	RandomHex32,
+	ClearEdgeSessions
+} from './interface.uts'
+
+export type {
+	EdgeRequest,
+	DecryptImage,
+	FetchDecryptImage,
+	RandomHex32,
+	ClearEdgeSessions
+} from './interface.uts'
+
+function notSupported(name: string): Error {
+	return new Error('hg-edge.' + name + ' 仅支持 Android')
+}
+
+export const edgeRequest: EdgeRequest = async function (
+	_scope: string,
+	_method: string,
+	_path: string,
+	_bodyJson: string,
+	_authToken: string
+): Promise<string> {
+	throw notSupported('edgeRequest')
+}
+
+export const decryptImage: DecryptImage = function (_cipherB64: string): string {
+	throw notSupported('decryptImage')
+}
+
+export const fetchDecryptImage: FetchDecryptImage = function (_url: string): string {
+	throw notSupported('fetchDecryptImage')
+}
+
+export const randomHex32: RandomHex32 = function (): string {
+	throw notSupported('randomHex32')
+}
+
+export const clearEdgeSessions: ClearEdgeSessions = function (): void {
+	// no-op on non-Android
+}
