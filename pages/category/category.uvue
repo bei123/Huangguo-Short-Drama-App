@@ -1,0 +1,308 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner" :style="pagePadStyle">
+			<text class="page-title">发现</text>
+			<text class="page-desc">分类 · 榜单 · 专题入口</text>
+
+			<text class="group-title">内容分类</text>
+			<view class="grid">
+				<view
+					v-for="(c, idx) in categories"
+					:key="c.id"
+					class="grid-item"
+					:class="'grid-tone-' + (idx % 4)"
+					hover-class="grid-hover"
+					@click="openCategory(c.route, c.name)"
+				>
+					<text class="grid-letter">{{c.name.substring(0, 1)}}</text>
+					<text class="grid-text">{{c.name}}</text>
+				</view>
+			</view>
+
+			<text class="group-title">排行榜</text>
+			<view class="rank-row">
+				<view class="rank-card" hover-class="rank-hover" @click="openRank('hot', '热播榜')">
+					<text class="rank-name">热播榜</text>
+					<text class="rank-desc">热力 TOP20</text>
+				</view>
+				<view class="rank-card" hover-class="rank-hover" @click="openRank('recommend', '推荐榜')">
+					<text class="rank-name">推荐榜</text>
+					<text class="rank-desc">口碑精选</text>
+				</view>
+				<view class="rank-card rank-card-last" hover-class="rank-hover" @click="openRank('potential', '潜力榜')">
+					<text class="rank-name">潜力榜</text>
+					<text class="rank-desc">新作崛起</text>
+				</view>
+			</view>
+
+			<text class="group-title">更多入口</text>
+			<view class="entry-list">
+				<view class="entry" @click="goTopics">
+					<view class="entry-meta">
+						<text class="entry-name">专题合集</text>
+						<text class="entry-desc">人工编排的作品专辑</text>
+					</view>
+					<text class="entry-arrow">›</text>
+				</view>
+				<view class="entry" @click="goPosts">
+					<view class="entry-meta">
+						<text class="entry-name">图文资讯</text>
+						<text class="entry-desc">吃瓜 · 剧评 · 幕后</text>
+					</view>
+					<text class="entry-arrow">›</text>
+				</view>
+				<view class="entry" @click="goFeed">
+					<view class="entry-meta">
+						<text class="entry-name">推荐信息流</text>
+						<text class="entry-desc">今日推荐与关注更新</text>
+					</view>
+					<text class="entry-arrow">›</text>
+				</view>
+				<view class="entry" @click="goOriginal">
+					<view class="entry-meta">
+						<text class="entry-name">原创专区</text>
+						<text class="entry-desc">原创短剧精选</text>
+					</view>
+					<text class="entry-arrow">›</text>
+				</view>
+				<view class="entry" @click="goLong">
+					<view class="entry-meta">
+						<text class="entry-name">长视频</text>
+						<text class="entry-desc">更长篇幅的剧集</text>
+					</view>
+					<text class="entry-arrow">›</text>
+				</view>
+				<view class="entry entry-last" @click="goSort('new', '最近更新')">
+					<view class="entry-meta">
+						<text class="entry-name">最近更新</text>
+						<text class="entry-desc">按更新时间浏览</text>
+					</view>
+					<text class="entry-arrow">›</text>
+				</view>
+			</view>
+
+			<view v-if="errorText.length > 0" class="state-box">
+				<text class="state-text">{{errorText}}</text>
+			</view>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchCategories } from '../../common/api/huangguo.uts'
+	import { CategoryItem } from '../../common/models/video.uts'
+	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
+	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+
+	const pagePadStyle = 'padding: 16px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+
+	const categories = ref<CategoryItem[]>([] as CategoryItem[])
+	const errorText = ref('')
+
+	function openCategory(route: string, name: string) {
+		uni.navigateTo({
+			url: '/pages/list/list?mode=category&route=' + encodeURIComponent(route) + '&title=' + encodeURIComponent(name)
+		})
+	}
+
+	function openRank(type: string, title: string) {
+		uni.navigateTo({
+			url: '/pages/rank/rank?type=' + encodeURIComponent(type) + '&title=' + encodeURIComponent(title)
+		})
+	}
+
+	function goTopics() { uni.navigateTo({ url: '/pages/topics/topics' }) }
+	function goPosts() { uni.navigateTo({ url: '/pages/posts/posts' }) }
+	function goFeed() { uni.navigateTo({ url: '/pages/feed/feed' }) }
+	function goOriginal() {
+		uni.navigateTo({ url: '/pages/list/list?mode=original&title=' + encodeURIComponent('原创专区') })
+	}
+	function goLong() {
+		uni.navigateTo({ url: '/pages/list/list?mode=long&title=' + encodeURIComponent('长视频') })
+	}
+	function goSort(route: string, title: string) {
+		uni.navigateTo({
+			url: '/pages/list/list?mode=sort&route=' + encodeURIComponent(route) + '&title=' + encodeURIComponent(title)
+		})
+	}
+
+	onLoad(() => {
+		fetchCategories().then((list) => {
+			categories.value = list
+		}).catch((e) => {
+			errorText.value = '分类加载失败'
+			console.log('[category] fail ' + e)
+		})
+	})
+
+	onShow(() => {
+		try {
+			installLiquidTabBar()
+			syncLiquidTabIndex('/pages/category/category')
+		} catch (_) { }
+	})
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #12141a;
+	}
+
+	.page-inner {
+		padding: 16px;
+	}
+
+	.page-title {
+		color: #E8C27A;
+		font-size: 26px;
+		font-weight: bold;
+	}
+
+	.page-desc {
+		margin-top: 6px;
+		margin-bottom: 20px;
+		color: #8A8E96;
+		font-size: 13px;
+	}
+
+	.group-title {
+		color: #F2F3F5;
+		font-size: 16px;
+		font-weight: bold;
+		margin-bottom: 12px;
+		margin-top: 8px;
+	}
+
+	.grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-bottom: 16px;
+	}
+
+	.grid-item {
+		width: 31%;
+		margin-right: 3.5%;
+		margin-bottom: 10px;
+		background-color: #1A1D26;
+		border-radius: 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+		padding-top: 16px;
+		padding-bottom: 14px;
+		align-items: center;
+	}
+
+	.grid-tone-0 { border-color: #3A3428; }
+	.grid-tone-1 { border-color: #2A3340; }
+	.grid-tone-2 { border-color: #332A38; }
+	.grid-tone-3 { border-color: #2A3830; }
+
+	.grid-hover {
+		background-color: #22262F;
+	}
+
+	.grid-letter {
+		color: #E8C27A;
+		font-size: 18px;
+		font-weight: bold;
+		margin-bottom: 6px;
+	}
+
+	.grid-text {
+		color: #F2F3F5;
+		font-size: 13px;
+		font-weight: bold;
+	}
+
+	.rank-hover {
+		background-color: #22262F;
+	}
+
+	.rank-row {
+		flex-direction: row;
+		margin-bottom: 16px;
+	}
+
+	.rank-card {
+		flex: 1;
+		background-color: #1A1D26;
+		border-radius: 12px;
+		padding: 14px 10px;
+		margin-right: 8px;
+	}
+
+	.rank-card-last {
+		margin-right: 0;
+	}
+
+	.rank-name {
+		color: #E8C27A;
+		font-size: 14px;
+		font-weight: bold;
+	}
+
+	.rank-desc {
+		margin-top: 6px;
+		color: #8A8E96;
+		font-size: 11px;
+	}
+
+	.entry-list {
+		background-color: #1A1D26;
+		border-radius: 12px;
+		overflow: hidden;
+		margin-bottom: 12px;
+	}
+
+	.entry {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px 14px;
+		border-bottom-width: 1px;
+		border-bottom-color: #2A2E38;
+		border-bottom-style: solid;
+	}
+
+	.entry-last {
+		border-bottom-width: 0;
+	}
+
+	.entry-meta {
+		flex: 1;
+	}
+
+	.entry-name {
+		color: #F2F3F5;
+		font-size: 15px;
+		font-weight: bold;
+	}
+
+	.entry-desc {
+		margin-top: 4px;
+		color: #8A8E96;
+		font-size: 12px;
+	}
+
+	.entry-arrow {
+		color: #6F737A;
+		font-size: 20px;
+		margin-left: 8px;
+	}
+
+	.state-box {
+		margin-top: 20px;
+		align-items: center;
+	}
+
+	.state-text {
+		color: #8A8E96;
+		font-size: 13px;
+	}
+</style>

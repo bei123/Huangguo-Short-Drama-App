@@ -1,0 +1,173 @@
+import { publicGet, dynamicGet, userPost, userDelete } from '../http/client.uts'
+import { PostCard, PostDetail } from '../models/extra.uts'
+import { CategoryItem, PageResult } from '../models/video.uts'
+import { resolveCoverUrl } from '../http/config.uts'
+import { parseCategories } from './parse.uts'
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	return n != null ? (n as number) : fallback
+}
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	return v != null ? (v as string).trim() : fallback
+}
+
+function readTags(obj: UTSJSONObject): string[] {
+	const out: string[] = []
+	const arr = obj.getArray('tags')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	const limit = Math.min(list.length, 8)
+	for (let i = 0; i < limit; i++) {
+		out.push(('' + list[i]).trim())
+	}
+	return out
+}
+
+export function parsePostCard(obj: UTSJSONObject): PostCard {
+	return {
+		id: '' + readNum(obj, 'id', 0),
+		title: readStr(obj, 'title', ''),
+		cover: resolveCoverUrl(readStr(obj, 'cover', '')),
+		hot: readNum(obj, 'hot', 0),
+		tags: readTags(obj),
+		createdAt: readStr(obj, 'created_at', '')
+	} as PostCard
+}
+
+function parsePostPage(data: UTSJSONObject): PageResult<PostCard> {
+	const items: PostCard[] = []
+	const arr = data.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			items.push(parsePostCard(list[i] as UTSJSONObject))
+		}
+	}
+	const pag = data.getJSON('pagination')
+	return {
+		items: items,
+		page: pag != null ? readNum(pag!, 'page', 1) as number : 1,
+		pages: pag != null ? readNum(pag!, 'pages', 1) as number : 1,
+		total: pag != null ? readNum(pag!, 'total', items.length) as number : items.length
+	} as PageResult<PostCard>
+}
+
+export async function fetchPostCategories(): Promise<CategoryItem[]> {
+	const res = await publicGet('/api/site/categories/post')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return [] as CategoryItem[]
+	}
+	return parseCategories(data!) as CategoryItem[]
+}
+
+export async function fetchPosts(page: number): Promise<PageResult<PostCard>> {
+	const res = await publicGet('/api/posts?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as PostCard[], page: 1, pages: 1, total: 0 } as PageResult<PostCard>
+	}
+	return parsePostPage(data!)
+}
+
+export async function fetchPostsByCategory(route: string, page: number): Promise<PageResult<PostCard>> {
+	const res = await publicGet('/api/posts/category/' + encodeURIComponent(route) + '?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as PostCard[], page: 1, pages: 1, total: 0 } as PageResult<PostCard>
+	}
+	return parsePostPage(data!)
+}
+
+export async function fetchPostDetail(id: string): Promise<PostDetail> {
+	const res = await dynamicGet('/api/posts/' + encodeURIComponent(id))
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('post empty')
+	}
+	let authorId = 0
+	let authorName = ''
+	let authorAvatar = ''
+	const author = data!.getJSON('author')
+	if (author != null) {
+		authorId = readNum(author!, 'id', 0) as number
+		authorName = readStr(author!, 'name', readStr(author!, 'nickname', ''))
+		authorAvatar = resolveCoverUrl(readStr(author!, 'avatar', ''))
+	}
+	let hot = 0
+	let like = 0
+	let collect = 0
+	const counts = data!.getJSON('counts')
+	if (counts != null) {
+		hot = readNum(counts!, 'hot', 0)
+		like = readNum(counts!, 'like', 0)
+		collect = readNum(counts!, 'collect', 0)
+	}
+	let liked = false
+	let collected = false
+	const interaction = data!.getJSON('interaction')
+	if (interaction != null) {
+		liked = interaction!.getBoolean('liked') ?? false
+		collected = interaction!.getBoolean('collected') ?? false
+	}
+	let authorFollowing = false
+	if (author != null) {
+		authorFollowing = author!.getBoolean('is_following') ?? false
+	}
+	return {
+		id: '' + readNum(data!, 'id', 0),
+		title: readStr(data!, 'title', ''),
+		cover: resolveCoverUrl(readStr(data!, 'cover', '')),
+		content: readStr(data!, 'content', ''),
+		hot: hot,
+		like: like,
+		collect: collect,
+		tags: readTags(data!),
+		authorId: authorId,
+		authorName: authorName,
+		authorAvatar: authorAvatar,
+		liked: liked,
+		collected: collected,
+		authorFollowing: authorFollowing
+	} as PostDetail
+}
+
+/** 图文访问埋点（user 档），写入吃瓜历史 HTML（文档 16.4） */
+export async function visitPost(id: string): Promise<void> {
+	try {
+		await userPost('/api/posts/' + encodeURIComponent(id) + '/visit', '{}')
+	} catch (e) {
+		console.log('[post] visit fail ' + e)
+	}
+}
+
+export async function likePost(id: string, on: boolean): Promise<boolean> {
+	const path = '/api/posts/' + encodeURIComponent(id) + '/like'
+	const res = on ? await userPost(path, '{}') : await userDelete(path)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return on
+	}
+	return data!.getBoolean('liked') ?? on
+}
+
+export async function collectPost(id: string, on: boolean): Promise<boolean> {
+	const path = '/api/posts/' + encodeURIComponent(id) + '/collect'
+	const res = on ? await userPost(path, '{}') : await userDelete(path)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return on
+	}
+	return data!.getBoolean('collected') ?? on
+}
+
+export async function fetchPostAdjacent(id: string): Promise<UTSJSONObject> {
+	const res = await publicGet('/api/posts/' + encodeURIComponent(id) + '/adjacent')
+	const data = res.getJSON('data')
+	return data != null ? data! : ({} as UTSJSONObject)
+}

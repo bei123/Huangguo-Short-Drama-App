@@ -1,0 +1,110 @@
+<template>
+	<view class="hg-cover" :style="boxStyle">
+		<image
+			v-if="localSrc.length > 0"
+			class="hg-cover-img"
+			:src="localSrc"
+			mode="aspectFill"
+			@error="onImgError"
+		></image>
+		<view v-else class="hg-cover-placeholder" :style="placeholderStyle">
+			<text class="hg-cover-placeholder-text">{{placeholderText}}</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { loadDecryptedCover } from '../../common/crypto/image.uts'
+
+	const props = defineProps({
+		src: { type: String, default: '' },
+		width: { type: Number, default: 110 },
+		height: { type: Number, default: 150 },
+		radius: { type: Number, default: 8 },
+		placeholder: { type: String, default: '' }
+	})
+
+	const localSrc = ref('')
+	let requestToken = 0
+	let retryCount = 0
+
+	const boxStyle = computed((): string => {
+		return 'width:' + props.width + 'px;height:' + props.height + 'px;border-radius:' + props.radius + 'px;'
+	})
+
+	const placeholderStyle = computed((): string => {
+		return 'border-radius:' + props.radius + 'px;'
+	})
+
+	const placeholderText = computed((): string => {
+		if (props.placeholder.length > 0) {
+			return props.placeholder
+		}
+		return '黄果'
+	})
+
+	async function loadCover(raw: string, isRetry: boolean) {
+		const token = ++requestToken
+		if (!isRetry) {
+			localSrc.value = ''
+			retryCount = 0
+		}
+		if (raw.length == 0) {
+			return
+		}
+		try {
+			const path = await loadDecryptedCover(raw)
+			if (token != requestToken) {
+				return
+			}
+			localSrc.value = path
+		} catch (e) {
+			console.log('[hg-cover] fail: ' + e)
+			if (token != requestToken) {
+				return
+			}
+			if (retryCount < 1) {
+				retryCount++
+				setTimeout(() => {
+					if (token == requestToken) {
+						loadCover(raw, true)
+					}
+				}, 400)
+			}
+		}
+	}
+
+	function onImgError() {
+		console.log('[hg-cover] image decode error')
+		localSrc.value = ''
+	}
+
+	watch((): string => props.src, (v: string) => {
+		loadCover(v, false)
+	}, { immediate: true } as WatchOptions)
+</script>
+
+<style>
+	.hg-cover {
+		overflow: hidden;
+		background-color: #2a2a2e;
+	}
+
+	.hg-cover-img {
+		width: 100%;
+		height: 100%;
+	}
+
+	.hg-cover-placeholder {
+		width: 100%;
+		height: 100%;
+		background-color: #2f3238;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.hg-cover-placeholder-text {
+		color: #6f737a;
+		font-size: 12px;
+	}
+</style>

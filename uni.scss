@@ -1,0 +1,71 @@
+/**
+ * 黄果短剧设计 token（第一期）
+ * 深色底 + 香槟金，页面内也可直接使用同色值保持一致
+ */
+
+/* —— 黄果色板 —— */
+$hg-bg: #0E1015;
+$hg-bg-page: #12141a;
+$hg-surface: #1A1D26;
+$hg-surface-2: #22262F;
+$hg-border: #2A2E38;
+$hg-gold: #E8C27A;
+$hg-gold-dim: #C4A36A;
+$hg-text: #F2F3F5;
+$hg-text-2: #C8CCD3;
+$hg-text-3: #8A8E96;
+$hg-text-4: #6F737A;
+$hg-danger: #E07070;
+$hg-danger-bg: #2A1F1F;
+$hg-badge: #C44A3A;
+$hg-glass-fallback: rgba(26, 29, 38, 0.78);
+$hg-glass-border: rgba(232, 194, 122, 0.18);
+
+/* 兼容 uni 插件默认变量（映射到黄果深色） */
+$uni-color-primary: #E8C27A;
+$uni-color-success: #4cd964;
+$uni-color-warning: #f0ad4e;
+$uni-color-error: #E07070;
+
+$uni-text-color: #F2F3F5;
+$uni-text-color-inverse: #fff;
+$uni-text-color-grey: #8A8E96;
+$uni-text-color-placeholder: #6F737A;
+$uni-text-color-disable: #6F737A;
+
+$uni-bg-color: #12141a;
+$uni-bg-color-grey: #1A1D26;
+$uni-bg-color-hover: #22262F;
+$uni-bg-color-mask: rgba(0, 0, 0, 0.45);
+
+$uni-border-color: #2A2E38;
+
+$uni-font-size-sm: 12px;
+$uni-font-size-base: 14px;
+$uni-font-size-lg: 16px;
+
+$uni-img-size-sm: 20px;
+$uni-img-size-base: 26px;
+$uni-img-size-lg: 40px;
+
+$uni-border-radius-sm: 6px;
+$uni-border-radius-base: 10px;
+$uni-border-radius-lg: 12px;
+$uni-border-radius-circle: 50%;
+
+$uni-spacing-row-sm: 6px;
+$uni-spacing-row-base: 12px;
+$uni-spacing-row-lg: 16px;
+
+$uni-spacing-col-sm: 6px;
+$uni-spacing-col-base: 12px;
+$uni-spacing-col-lg: 20px;
+
+$uni-opacity-disabled: 0.35;
+
+$uni-color-title: #F2F3F5;
+$uni-font-size-title: 20px;
+$uni-color-subtitle: #C8CCD3;
+$uni-font-size-subtitle: 16px;
+$uni-color-paragraph: #8A8E96;
+$uni-font-size-paragraph: 14px;

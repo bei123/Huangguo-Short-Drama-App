@@ -1,0 +1,157 @@
+import { VideoCard } from './video.uts'
+
+export type TopicItem = {
+	id: string
+	title: string
+	slug: string
+	cover: string
+	intro: string
+	videoCount: number
+}
+
+export type TopicDetail = {
+	topic: TopicItem
+	videos: VideoCard[]
+	page: number
+	pages: number
+	total: number
+	related: TopicItem[]
+}
+
+export type PostCard = {
+	id: string
+	title: string
+	cover: string
+	hot: number
+	tags: string[]
+	createdAt: string
+}
+
+export type PostDetail = {
+	id: string
+	title: string
+	cover: string
+	content: string
+	hot: number
+	like: number
+	collect: number
+	tags: string[]
+	authorId: number
+	authorName: string
+	authorAvatar: string
+	liked: boolean
+	collected: boolean
+	authorFollowing: boolean
+}
+
+export type AuthorProfile = {
+	id: number
+	nickname: string
+	avatar: string
+	avatarColor: string
+	sign: string
+	desc: string
+	followers: number
+	following: number
+	likeCount: number
+	videoCount: number
+	postCount: number
+	isFollowing: boolean
+}
+
+export type HistoryItem = {
+	id: number
+	videoId: string
+	title: string
+	cover: string
+	lastEp: number
+	cateId: number
+	categoryName: string
+	targetType: string
+	updatedAt: string
+}
+
+/** 图文历史：来自 /profile/history/chigua/ HTML（文档 16.1–16.2） */
+export type PostHistoryItem = {
+	id: number
+	postId: string
+	title: string
+	cover: string
+	sub: string
+}
+
+export type CollectItem = {
+	id: number
+	videoId: string
+	title: string
+	cover: string
+	lastEp: number
+	categoryName: string
+}
+
+export type CommentItem = {
+	id: number
+	text: string
+	userName: string
+	avatar: string
+	createdAt: string
+	likes: number
+}
+
+export type FollowUser = {
+	id: number
+	nickname: string
+	avatar: string
+	avatarColor: string
+	sign: string
+}
+
+export type MessageItem = {
+	id: number
+	title: string
+	content: string
+	createdAt: string
+	read: boolean
+}
+
+export type SortItem = {
+	name: string
+	route: string
+}
+
+export type TagHot = {
+	word: string
+	heat: number
+}
+
+export type SuggestResult = {
+	words: string[]
+	tags: string[]
+	content: VideoCard[]
+}
+
+export type SiteConfig = {
+	siteName: string
+	logo: string
+	cdnHost: string
+}
+
+export type SitePage = {
+	slug: string
+	title: string
+	hasContent: boolean
+}
+
+export type SiteLink = {
+	id: number
+	name: string
+	url: string
+	desc: string
+}
+
+export type GoHomeData = {
+	faqs: string[]
+	routes: string[]
+	mail: string
+	tg: string
+}

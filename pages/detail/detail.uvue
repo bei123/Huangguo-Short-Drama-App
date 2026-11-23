@@ -1,0 +1,515 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner">
+			<view v-if="loading" class="state-box">
+				<text class="state-text">加载中…</text>
+			</view>
+			<view v-else-if="errorText.length > 0" class="state-box" @click="loadDetail">
+				<text class="state-text">{{errorText}}</text>
+				<text class="state-action">点击重试</text>
+			</view>
+			<template v-else-if="detail != null">
+				<video
+					v-if="playUrl.length > 0"
+					class="player"
+					:style="{ height: playerH + 'px' }"
+					:src="playUrl"
+					:autoplay="true"
+					:controls="true"
+					:show-center-play-btn="true"
+					object-fit="contain"
+					@error="onPlayError"
+				></video>
+				<view v-else class="player-placeholder" :style="{ height: playerH + 'px' }">
+					<hg-cover :src="detail!.cover" :width="playerW" :height="playerH" :radius="0"></hg-cover>
+					<text class="player-tip">{{playTip}}</text>
+				</view>
+
+				<view class="info">
+					<text class="title">{{detail!.title}}</text>
+					<text class="meta">评分 {{detail!.score > 0 ? detail!.score.toFixed(1) : '-'}} · {{detail!.isFinished ? '已完结' : '连载中'}} · {{detail!.episodeCount}}集</text>
+					<text class="meta">热度 {{formatCount(detail!.hot)}} · 点赞 {{formatCount(detail!.like)}} · 收藏 {{formatCount(detail!.collect)}}</text>
+					<text v-if="detail!.authorName.length > 0" class="meta author-link" @click="goAuthor">作者 {{detail!.authorName}} ›</text>
+
+					<view class="act-row">
+						<view class="act" :class="liked ? 'act-on' : ''" hover-class="act-hover" @click="toggleLike">
+							<text class="act-text" :class="liked ? 'act-text-on' : ''">{{liked ? '已赞' : '点赞'}}</text>
+						</view>
+						<view class="act" :class="collected ? 'act-on' : ''" hover-class="act-hover" @click="toggleCollect">
+							<text class="act-text" :class="collected ? 'act-text-on' : ''">{{collected ? '已藏' : '收藏'}}</text>
+						</view>
+						<view class="act" :class="showRatePanel || myScore > 0 ? 'act-on' : ''" hover-class="act-hover" @click="openRate">
+							<text class="act-text" :class="showRatePanel || myScore > 0 ? 'act-text-on' : ''">{{myScore > 0 ? (myScore + '星') : '评分'}}</text>
+						</view>
+						<view class="act act-last" :class="showComments ? 'act-on' : ''" hover-class="act-hover" @click="showComments = !showComments">
+							<text class="act-text" :class="showComments ? 'act-text-on' : ''">评论</text>
+						</view>
+					</view>
+
+					<view v-if="showRatePanel" class="rate-panel">
+						<text class="rate-hint">轻点选择评分</text>
+						<view class="rate-stars">
+							<text
+								v-for="s in rateStars"
+								:key="s"
+								class="rate-star"
+								:class="s <= pendingScore ? 'rate-star-on' : ''"
+								@click="pickScore(s)"
+							>★</text>
+						</view>
+						<view class="rate-actions">
+							<text class="rate-cancel" @click="showRatePanel = false">取消</text>
+							<view class="rate-ok" @click="submitRate">
+								<text class="rate-ok-text">提交</text>
+							</view>
+						</view>
+					</view>
+
+					<view class="tags">
+						<text v-for="(t, i) in detail!.tags" :key="i" class="tag" @click="openTag(t)">{{t}}</text>
+					</view>
+
+					<text class="desc" :max-lines="descExpanded ? -1 : 3">{{detail!.description}}</text>
+					<text v-if="detail!.description.length > 60" class="desc-toggle" @click="descExpanded = !descExpanded">
+						{{descExpanded ? '收起' : '展开简介'}}
+					</text>
+				</view>
+
+				<view class="block">
+					<view class="ep-head">
+						<text class="block-title">选集</text>
+						<text class="ep-head-sub">第 {{currentEp}} 集</text>
+					</view>
+					<view class="ep-grid">
+						<view
+							v-for="ep in detail!.episodes"
+							:key="ep.epNum"
+							class="ep-item"
+							:class="ep.epNum == currentEp ? 'ep-active' : (ep.locked ? 'ep-locked' : '')"
+							@click="selectEp(ep.epNum, ep.locked)"
+						>
+							<text
+								class="ep-text"
+								:class="ep.epNum == currentEp ? 'ep-text-on' : (ep.locked ? 'ep-text-locked' : '')"
+							>{{ep.locked ? ('锁' + ep.epNum) : ('' + ep.epNum)}}</text>
+						</view>
+					</view>
+				</view>
+
+				<template v-if="showComments">
+					<view class="block">
+						<text class="block-title">评论</text>
+						<view class="comment-box">
+							<input class="comment-input" type="text" :value="commentText" placeholder="说点什么…" placeholder-style="color:#6F737A" @input="onCommentInput" />
+							<view class="comment-send" @click="sendComment">
+								<text class="comment-send-text">发送</text>
+							</view>
+						</view>
+						<view v-for="c in comments" :key="c.id" class="comment-item">
+							<text class="comment-user">{{c.userName}}</text>
+							<text class="comment-text">{{c.text}}</text>
+							<text class="comment-time">{{c.createdAt}}</text>
+						</view>
+						<text v-if="comments.length == 0" class="footer-tip">暂无评论</text>
+					</view>
+				</template>
+
+				<view v-if="related.length > 0" class="block">
+					<text class="block-title">相关推荐</text>
+					<scroll-view class="rel-row" direction="horizontal" :show-scrollbar="false">
+						<hg-video-card
+							v-for="item in related"
+							:key="item.id"
+							:id="item.id"
+							:title="item.title"
+							:cover="item.cover"
+							:score="item.score"
+							:badge="item.badge"
+							:sub="item.episodeCount + '集'"
+						></hg-video-card>
+					</scroll-view>
+				</view>
+			</template>
+			<view class="bottom-space"></view>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchVideoDetail, fetchPlayback } from '../../common/api/huangguo.uts'
+	import {
+		collectVideo, likeVideo, rateVideo, syncHistory, visitVideo,
+		fetchComments, postComment, fetchRelated
+	} from '../../common/api/interact.uts'
+	import { VideoDetail, VideoCard } from '../../common/models/video.uts'
+	import { CommentItem } from '../../common/models/extra.uts'
+	import { isLoggedIn, getUser } from '../../common/auth/session.uts'
+	import { fetchMe } from '../../common/api/account.uts'
+
+	const playerW = uni.getWindowInfo().windowWidth
+	const playerH = Math.floor(playerW * 0.56)
+	const videoId = ref('')
+	const preferEp = ref(0)
+	const loading = ref(true)
+	const errorText = ref('')
+	const detail = ref<VideoDetail | null>(null)
+	const currentEp = ref(1)
+	const playUrl = ref('')
+	const playTip = ref('点击选集开始播放')
+	const expiresAt = ref(0)
+	const playLoading = ref(false)
+	const liked = ref(false)
+	const collected = ref(false)
+	const showComments = ref(false)
+	const showRatePanel = ref(false)
+	const myScore = ref(0)
+	const pendingScore = ref(5)
+	const rateStars = [1, 2, 3, 4, 5]
+	const descExpanded = ref(false)
+	const commentText = ref('')
+	const comments = ref<CommentItem[]>([] as CommentItem[])
+	const related = ref<VideoCard[]>([] as VideoCard[])
+
+	function formatCount(n: number): string {
+		if (n >= 100000000) {
+			return (n / 100000000).toFixed(1) + '亿'
+		}
+		if (n >= 10000) {
+			return (n / 10000).toFixed(1) + '万'
+		}
+		return '' + n
+	}
+
+	function requireLogin(): boolean {
+		if (isLoggedIn()) {
+			return true
+		}
+		uni.navigateTo({ url: '/pages/login/login' })
+		return false
+	}
+
+	function syncLocalState() {
+		const u = getUser()
+		if (u == null) {
+			liked.value = false
+			collected.value = false
+			return
+		}
+		const vid = parseFloat(videoId.value)
+		liked.value = u.likeVideoIds.indexOf(vid) >= 0
+		collected.value = u.favoriteVideoIds.indexOf(vid) >= 0
+	}
+
+	async function loadDetail() {
+		loading.value = true
+		errorText.value = ''
+		try {
+			const d = await fetchVideoDetail(videoId.value)
+			detail.value = d
+			uni.setNavigationBarTitle({ title: d.title })
+			visitVideo(videoId.value)
+			if (isLoggedIn()) {
+				try {
+					await fetchMe()
+				} catch (_) { }
+			}
+			syncLocalState()
+			if (d.episodes.length > 0) {
+				let startEp = d.episodes[0].epNum
+				if (preferEp.value > 0) {
+					for (let i = 0; i < d.episodes.length; i++) {
+						if (d.episodes[i].epNum == preferEp.value && !d.episodes[i].locked) {
+							startEp = preferEp.value
+							break
+						}
+					}
+				}
+				await playEpisode(startEp, false)
+			}
+			fetchRelated(videoId.value, 1).then((res) => {
+				related.value = res.items
+			}).catch((_) => { })
+			fetchComments(videoId.value, 1).then((res) => {
+				comments.value = res.items
+			}).catch((_) => { })
+		} catch (e) {
+			errorText.value = '加载失败，点击重试'
+			console.log('[detail] fail ' + e)
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function selectEp(ep: number, locked: boolean) {
+		if (locked) {
+			uni.showToast({ title: '该集暂不可播', icon: 'none' })
+			return
+		}
+		await playEpisode(ep, true)
+	}
+
+	async function playEpisode(ep: number, forceRefresh: boolean) {
+		if (playLoading.value) {
+			return
+		}
+		const needRefresh = forceRefresh || playUrl.value.length == 0 || (expiresAt.value > 0 && Date.now() > expiresAt.value - 60000)
+		if (!needRefresh && ep == currentEp.value && playUrl.value.length > 0) {
+			return
+		}
+		playLoading.value = true
+		playTip.value = '获取播放地址…'
+		currentEp.value = ep
+		try {
+			const info = await fetchPlayback(videoId.value, ep)
+			playUrl.value = info.url
+			expiresAt.value = info.expiresAt
+			playTip.value = ''
+			if (isLoggedIn()) {
+				syncHistory(videoId.value, ep)
+			}
+		} catch (e) {
+			playUrl.value = ''
+			playTip.value = '播放失败'
+			uni.showToast({ title: '播放失败', icon: 'none' })
+		} finally {
+			playLoading.value = false
+		}
+	}
+
+	function onPlayError() {
+		playUrl.value = ''
+		playTip.value = '播放出错，点击选集重试'
+	}
+
+	async function toggleLike() {
+		if (!requireLogin()) { return }
+		try {
+			liked.value = await likeVideo(videoId.value, currentEp.value, !liked.value)
+			try { await fetchMe() } catch (_) { }
+		} catch (e) {
+			uni.showToast({ title: '' + e, icon: 'none' })
+		}
+	}
+
+	async function toggleCollect() {
+		if (!requireLogin()) { return }
+		try {
+			collected.value = await collectVideo(videoId.value, currentEp.value, !collected.value)
+			try { await fetchMe() } catch (_) { }
+		} catch (e) {
+			uni.showToast({ title: '' + e, icon: 'none' })
+		}
+	}
+
+	function openRate() {
+		if (!requireLogin()) { return }
+		pendingScore.value = myScore.value > 0 ? myScore.value : 5
+		showRatePanel.value = true
+	}
+
+	function pickScore(s: number) {
+		pendingScore.value = s
+	}
+
+	async function submitRate() {
+		if (!requireLogin()) { return }
+		const score = Math.floor(pendingScore.value)
+		if (score < 1 || score > 5) {
+			uni.showToast({ title: '请选择1～5星', icon: 'none' })
+			return
+		}
+		try {
+			const my = await rateVideo(videoId.value, score)
+			myScore.value = my > 0 ? my : score
+			showRatePanel.value = false
+			uni.showToast({ title: '已评 ' + myScore.value + ' 星', icon: 'none' })
+		} catch (e) {
+			uni.showToast({ title: '' + e, icon: 'none' })
+		}
+	}
+
+	function onCommentInput(e: UniInputEvent) {
+		commentText.value = e.detail.value
+	}
+
+	async function sendComment() {
+		if (!requireLogin()) { return }
+		const t = commentText.value.trim()
+		if (t.length == 0) {
+			uni.showToast({ title: '请输入评论', icon: 'none' })
+			return
+		}
+		try {
+			await postComment(videoId.value, t, currentEp.value)
+			commentText.value = ''
+			uni.showToast({ title: '已提交', icon: 'none' })
+			const res = await fetchComments(videoId.value, 1)
+			comments.value = res.items
+		} catch (e) {
+			uni.showToast({ title: '' + e, icon: 'none' })
+		}
+	}
+
+	function goAuthor() {
+		if (detail.value == null || detail.value!.authorId <= 0) {
+			return
+		}
+		uni.navigateTo({ url: '/pages/author/author?id=' + detail.value!.authorId })
+	}
+
+	function openTag(tag: string) {
+		uni.navigateTo({
+			url: '/pages/list/list?mode=tag&route=' + encodeURIComponent(tag) + '&title=' + encodeURIComponent(tag)
+		})
+	}
+
+	onLoad((options) => {
+		videoId.value = options['id'] ?? ''
+		const epRaw = options['ep'] ?? '0'
+		const epNum = parseFloat(epRaw)
+		preferEp.value = (!isNaN(epNum) && epNum > 0) ? (epNum as number) : 0
+		if (videoId.value.length == 0) {
+			errorText.value = '缺少作品 id'
+			loading.value = false
+			return
+		}
+		loadDetail()
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.page-inner { background-color: #12141a; }
+	.state-box { padding-top: 100px; align-items: center; padding-left: 24px; padding-right: 24px; }
+	.state-text { color: #8A8E96; font-size: 14px; text-align: center; }
+	.state-action { margin-top: 12px; color: #E8C27A; font-size: 13px; }
+	.player { width: 100%; height: 220px; background-color: #000000; }
+	.player-placeholder {
+		width: 100%; background-color: #000000;
+		align-items: center; justify-content: center; overflow: hidden;
+		position: relative;
+	}
+	.player-tip {
+		position: absolute; color: #ffffff; font-size: 13px;
+		background-color: rgba(0, 0, 0, 0.5); padding: 8px 12px; border-radius: 8px;
+	}
+	.info { padding: 16px; }
+	.title { color: #F2F3F5; font-size: 20px; font-weight: bold; }
+	.meta { margin-top: 6px; color: #8A8E96; font-size: 12px; }
+	.author-link { color: #E8C27A; margin-top: 8px; }
+	.act-row {
+		flex-direction: row;
+		margin-top: 16px;
+	}
+	.act {
+		flex: 1;
+		margin-right: 8px;
+		height: 40px;
+		border-radius: 10px;
+		align-items: center;
+		justify-content: center;
+		background-color: #1A1D26;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.act-last { margin-right: 0; }
+	.act-hover { background-color: #22262F; }
+	.act-on {
+		background-color: #2A261C;
+		border-color: #E8C27A;
+	}
+	.act-text { color: #C8CCD3; font-size: 12px; font-weight: bold; }
+	.act-text-on { color: #E8C27A; }
+	.rate-panel {
+		margin-top: 12px;
+		padding: 16px;
+		background-color: #1A1D26;
+		border-radius: 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.rate-hint { color: #8A8E96; font-size: 12px; margin-bottom: 12px; }
+	.rate-stars { flex-direction: row; justify-content: space-between; padding: 0 12px; }
+	.rate-star { color: #3A3E48; font-size: 30px; }
+	.rate-star-on { color: #E8C27A; }
+	.rate-actions {
+		flex-direction: row; justify-content: flex-end;
+		margin-top: 16px; align-items: center;
+	}
+	.rate-cancel { color: #8A8E96; font-size: 14px; margin-right: 16px; padding: 8px; }
+	.rate-ok {
+		height: 34px;
+		padding-left: 18px;
+		padding-right: 18px;
+		background-color: #E8C27A;
+		border-radius: 8px;
+		align-items: center;
+		justify-content: center;
+	}
+	.rate-ok-text { color: #1A1208; font-size: 14px; font-weight: bold; }
+	.tags { flex-direction: row; flex-wrap: wrap; margin-top: 12px; }
+	.tag {
+		background-color: #1A1D26; color: #C8CCD3; font-size: 11px;
+		padding: 5px 10px; border-radius: 6px; margin-right: 6px; margin-bottom: 6px;
+	}
+	.desc { margin-top: 12px; color: #C8CCD3; font-size: 13px; text-overflow: ellipsis; }
+	.desc-toggle { margin-top: 6px; color: #E8C27A; font-size: 12px; }
+	.block { padding: 4px 16px 8px 16px; }
+	.ep-head {
+		flex-direction: row;
+		align-items: baseline;
+		justify-content: space-between;
+		margin-top: 8px;
+		margin-bottom: 12px;
+	}
+	.block-title {
+		color: #F2F3F5; font-size: 16px; font-weight: bold;
+	}
+	.ep-head-sub {
+		color: #E8C27A;
+		font-size: 13px;
+	}
+	.ep-grid { flex-direction: row; flex-wrap: wrap; }
+	.ep-item {
+		width: 52px; height: 40px; margin-right: 8px; margin-bottom: 8px; border-radius: 8px;
+		background-color: #1A1D26; align-items: center; justify-content: center;
+	}
+	.ep-active { background-color: #E8C27A; }
+	.ep-locked {
+		background-color: #16181F;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.ep-text { color: #F2F3F5; font-size: 13px; }
+	.ep-text-locked { color: #6F737A; font-size: 11px; }
+	.ep-text-on { color: #1A1208; font-weight: bold; }
+	.comment-box { flex-direction: row; align-items: center; margin-bottom: 12px; }
+	.comment-input {
+		flex: 1; height: 40px; background-color: #1A1D26; border-radius: 10px;
+		padding-left: 14px; padding-right: 14px; color: #F2F3F5; font-size: 13px;
+		border-width: 1px; border-style: solid; border-color: #2A2E38;
+	}
+	.comment-send {
+		margin-left: 10px; height: 40px; padding-left: 14px; padding-right: 14px;
+		background-color: #E8C27A; border-radius: 10px;
+		align-items: center; justify-content: center;
+	}
+	.comment-send-text { color: #1A1208; font-size: 13px; font-weight: bold; }
+	.comment-item {
+		padding: 12px; margin-bottom: 8px;
+		background-color: #1A1D26; border-radius: 10px;
+	}
+	.comment-user { color: #E8C27A; font-size: 12px; }
+	.comment-text { margin-top: 6px; color: #C8CCD3; font-size: 13px; }
+	.comment-time { margin-top: 6px; color: #6F737A; font-size: 11px; }
+	.rel-row { height: 210px; flex-direction: row; }
+	.footer-tip { text-align: center; color: #6F737A; font-size: 12px; padding: 8px; }
+	.bottom-space { height: 32px; }
+</style>

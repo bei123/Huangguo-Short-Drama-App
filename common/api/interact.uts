@@ -1,0 +1,402 @@
+import { publicGet, userGet, userGetText, userPost, userDelete, dynamicGet, dynamicPost } from '../http/client.uts'
+import { HistoryItem, PostHistoryItem, CollectItem, CommentItem, FollowUser, MessageItem } from '../models/extra.uts'
+import { PageResult, VideoCard } from '../models/video.uts'
+import { resolveCoverUrl } from '../http/config.uts'
+import { parseCardPage } from './parse.uts'
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	return n != null ? (n as number) : fallback
+}
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	return v != null ? (v as string).trim() : fallback
+}
+
+type PageMeta = {
+	page: number
+	pages: number
+	total: number
+}
+
+function parsePagination(data: UTSJSONObject, page: number, count: number): PageMeta {
+	const pag = data.getJSON('pagination')
+	return {
+		page: pag != null ? readNum(pag!, 'page', page) as number : page,
+		pages: pag != null ? readNum(pag!, 'pages', 1) as number : 1,
+		total: pag != null ? readNum(pag!, 'total', count) as number : count
+	} as PageMeta
+}
+
+export async function collectVideo(id: string, ep: number, on: boolean): Promise<boolean> {
+	const path = '/api/videos/' + encodeURIComponent(id) + '/collect?ep=' + ep
+	const res = on ? await userPost(path, '{}') : await userDelete(path)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return on
+	}
+	return data!.getBoolean('collected') ?? on
+}
+
+export async function likeVideo(id: string, ep: number, on: boolean): Promise<boolean> {
+	const path = '/api/videos/' + encodeURIComponent(id) + '/like?ep=' + ep
+	const res = on ? await userPost(path, '{}') : await userDelete(path)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return on
+	}
+	return data!.getBoolean('liked') ?? on
+}
+
+export async function followUser(uid: number, on: boolean): Promise<boolean> {
+	const path = '/api/users/' + uid + '/follow'
+	const res = on ? await userPost(path, '{}') : await userDelete(path)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return on
+	}
+	return data!.getBoolean('following') ?? on
+}
+
+export async function rateVideo(id: string, score: number): Promise<number> {
+	const s = Math.floor(score)
+	const res = await userPost('/api/videos/' + encodeURIComponent(id) + '/rating', '{"score":' + s + '}')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return s
+	}
+	return readNum(data!, 'my', s)
+}
+
+export async function syncHistory(videoId: string, ep: number): Promise<void> {
+	const vid = Math.floor(parseFloat(videoId))
+	const epNum = Math.floor(ep as number)
+	if (vid <= 0 || epNum <= 0) {
+		return
+	}
+	// 手写 JSON，避免 UTS stringify 把嵌套对象弄丢；优先单条写入（文档 13.2.1 已确认）
+	const singleBody = '{"video_id":' + vid + ',"ep":' + epNum + '}'
+	const syncBody = '{"items":[{"video_id":' + vid + ',"ep":' + epNum + '}]}'
+	try {
+		await userPost('/api/users/me/history', singleBody)
+	} catch (_) {
+		try {
+			await userPost('/api/users/me/history/sync', syncBody)
+		} catch (e) {
+			console.log('[history] sync fail ' + e)
+		}
+	}
+}
+
+export async function visitVideo(id: string): Promise<void> {
+	try {
+		await dynamicPost('/api/videos/' + encodeURIComponent(id) + '/visit', '{}')
+	} catch (_) { }
+}
+
+export async function fetchMyHistory(page: number): Promise<PageResult<HistoryItem>> {
+	const res = await userGet('/api/users/me/history?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	const items: HistoryItem[] = []
+	if (data == null) {
+		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<HistoryItem>
+	}
+	const arr = data!.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i] as UTSJSONObject
+			items.push({
+				id: readNum(it, 'id', 0) as number,
+				videoId: '' + readNum(it, 'video_id', 0),
+				title: readStr(it, 'title', ''),
+				cover: resolveCoverUrl(readStr(it, 'cover', '')),
+				lastEp: readNum(it, 'last_ep', 1) as number,
+				cateId: readNum(it, 'cate_id', 0) as number,
+				categoryName: readStr(it, 'category_name', ''),
+				targetType: readStr(it, 'target_type', 'video'),
+				updatedAt: readStr(it, 'updated_at', '')
+			} as HistoryItem)
+		}
+	}
+	const meta = parsePagination(data!, page, items.length)
+	return { items: items, page: meta.page, pages: meta.pages, total: meta.total } as PageResult<HistoryItem>
+}
+
+function attrValue(chunk: string, attr: string): string {
+	const key = attr + '="'
+	const i = chunk.indexOf(key)
+	if (i < 0) {
+		return ''
+	}
+	const start = i + key.length
+	const end = chunk.indexOf('"', start)
+	if (end < 0) {
+		return ''
+	}
+	return chunk.substring(start, end)
+}
+
+function decodeHtmlEntities(s: string): string {
+	let out = s
+	out = out.replace('&amp;', '&')
+	out = out.replace('&quot;', '"')
+	out = out.replace('&#39;', "'")
+	out = out.replace('&lt;', '<')
+	out = out.replace('&gt;', '>')
+	return out
+}
+
+/**
+ * 文档 16.1：图文历史只在 SSR HTML 里。
+ * path 必须带结尾斜杠，且必须走 user 档。
+ */
+export async function fetchPostHistoryHtml(): Promise<PostHistoryItem[]> {
+	const html = await userGetText('/profile/history/chigua/')
+	const items: PostHistoryItem[] = []
+	const marker = 'data-hist-id="'
+	let from = 0
+	while (from < html.length) {
+		const idx = html.indexOf(marker, from)
+		if (idx < 0) {
+			break
+		}
+		const idStart = idx + marker.length
+		const idEnd = html.indexOf('"', idStart)
+		if (idEnd < 0) {
+			break
+		}
+		const histIdStr = html.substring(idStart, idEnd)
+		const histId = parseFloat(histIdStr)
+		const nextIdx = html.indexOf(marker, idEnd)
+		const chunkEnd = nextIdx >= 0 ? nextIdx : Math.min(html.length, idEnd + 2500)
+		const chunk = html.substring(idx, chunkEnd)
+
+		let postId = attrValue(chunk, 'data-track-item-id')
+		if (postId.length == 0) {
+			const hrefKey = 'href="/archives/'
+			const hi = chunk.indexOf(hrefKey)
+			if (hi >= 0) {
+				const hs = hi + hrefKey.length
+				const he = chunk.indexOf('/', hs)
+				if (he > hs) {
+					postId = chunk.substring(hs, he)
+				}
+			}
+		}
+		let title = attrValue(chunk, 'data-track-item-name')
+		if (title.length == 0) {
+			title = attrValue(chunk, 'alt')
+		}
+		title = decodeHtmlEntities(title)
+		let cover = attrValue(chunk, 'data-src')
+		if (cover.length == 0) {
+			// 兜底：有的节点可能写成 data-src='…'
+			const ds = chunk.indexOf('data-src=')
+			if (ds >= 0) {
+				const q = chunk.charAt(ds + 9)
+				if (q == '"' || q == "'") {
+					const cs = ds + 10
+					const ce = chunk.indexOf(q, cs)
+					if (ce > cs) {
+						cover = chunk.substring(cs, ce)
+					}
+				}
+			}
+		}
+		cover = resolveCoverUrl(cover)
+
+		let sub = '图文'
+		const readIdx = chunk.indexOf('阅读')
+		if (readIdx > 0) {
+			const slice = chunk.substring(Math.max(0, readIdx - 12), Math.min(chunk.length, readIdx + 20))
+			let plain = ''
+			let guard = 0
+			let i = 0
+			while (i < slice.length && guard < 80) {
+				const ch = slice.charAt(i)
+				if (ch == '<') {
+					const gt = slice.indexOf('>', i)
+					if (gt < 0) {
+						break
+					}
+					i = gt + 1
+				} else {
+					plain += ch
+					i++
+				}
+				guard++
+			}
+			plain = plain.replace('\n', ' ').trim()
+			if (plain.length > 0) {
+				sub = plain
+			}
+		}
+
+		if (postId.length > 0 && histId > 0) {
+			items.push({
+				id: histId as number,
+				postId: postId,
+				title: title.length > 0 ? title : ('帖子 ' + postId),
+				cover: cover,
+				sub: sub
+			} as PostHistoryItem)
+		}
+		from = idEnd + 1
+	}
+	return items
+}
+
+export async function fetchMyCollects(page: number): Promise<PageResult<CollectItem>> {
+	const res = await userGet('/api/users/me/collects?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	const items: CollectItem[] = []
+	if (data == null) {
+		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<CollectItem>
+	}
+	const arr = data!.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i] as UTSJSONObject
+			items.push({
+				id: readNum(it, 'id', 0) as number,
+				videoId: '' + readNum(it, 'video_id', 0),
+				title: readStr(it, 'title', ''),
+				cover: resolveCoverUrl(readStr(it, 'cover', '')),
+				lastEp: readNum(it, 'last_ep', 1) as number,
+				categoryName: readStr(it, 'category_name', '')
+			} as CollectItem)
+		}
+	}
+	const meta = parsePagination(data!, page, items.length)
+	return { items: items, page: meta.page, pages: meta.pages, total: meta.total } as PageResult<CollectItem>
+}
+
+export async function fetchMyLikes(page: number): Promise<PageResult<VideoCard>> {
+	const res = await userGet('/api/users/me/likes?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function deleteHistory(ids: number[]): Promise<void> {
+	await userPost('/api/users/me/history/delete', JSON.stringify({ ids: ids }))
+}
+
+export async function fetchMyFollows(page: number): Promise<PageResult<FollowUser>> {
+	const res = await userGet('/api/users/me/follows?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	const items: FollowUser[] = []
+	if (data == null) {
+		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<FollowUser>
+	}
+	const arr = data!.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i] as UTSJSONObject
+			const user = it.getJSON('user')
+			const src = user != null ? user! : it
+			items.push({
+				id: readNum(src, 'id', readNum(it, 'user_id', 0)) as number,
+				nickname: readStr(src, 'nickname', readStr(src, 'name', '')),
+				avatar: resolveCoverUrl(readStr(src, 'avatar', '')),
+				avatarColor: readStr(src, 'avatar_color', '#8C8C8C'),
+				sign: readStr(src, 'sign', '')
+			} as FollowUser)
+		}
+	}
+	const meta = parsePagination(data!, page, items.length)
+	return { items: items, page: meta.page, pages: meta.pages, total: meta.total } as PageResult<FollowUser>
+}
+
+export async function fetchMyMessages(page: number): Promise<PageResult<MessageItem>> {
+	const res = await userGet('/api/users/me/messages?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	const items: MessageItem[] = []
+	if (data == null) {
+		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<MessageItem>
+	}
+	const arr = data!.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i] as UTSJSONObject
+			items.push({
+				id: readNum(it, 'id', 0) as number,
+				title: readStr(it, 'title', readStr(it, 'type', '消息')),
+				content: readStr(it, 'content', readStr(it, 'text', '')),
+				createdAt: readStr(it, 'created_at', ''),
+				read: it.getBoolean('read') ?? (readNum(it, 'is_read', 0) == 1)
+			} as MessageItem)
+		}
+	}
+	const meta = parsePagination(data!, page, items.length)
+	return { items: items, page: meta.page, pages: meta.pages, total: meta.total } as PageResult<MessageItem>
+}
+
+export async function fetchUnreadCount(): Promise<number> {
+	const res = await userGet('/api/users/me/messages/unread-count')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return 0
+	}
+	return readNum(data!, 'unread', 0) as number
+}
+
+export async function readAllMessages(): Promise<void> {
+	await userPost('/api/users/me/messages/read-all', '{}')
+}
+
+export async function fetchComments(videoId: string, page: number): Promise<PageResult<CommentItem>> {
+	const res = await dynamicGet('/api/videos/' + encodeURIComponent(videoId) + '/comments?page=' + page)
+	const data = res.getJSON('data')
+	const items: CommentItem[] = []
+	if (data == null) {
+		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<CommentItem>
+	}
+	const arr = data!.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i] as UTSJSONObject
+			let name = readStr(it, 'nickname', '')
+			let avatar = ''
+			const user = it.getJSON('user')
+			if (user != null) {
+				name = readStr(user!, 'nickname', name)
+				avatar = resolveCoverUrl(readStr(user!, 'avatar', ''))
+			}
+			if (name.length == 0) {
+				name = readStr(it, 'name', '用户')
+			}
+			items.push({
+				id: readNum(it, 'id', 0) as number,
+				text: readStr(it, 'text', readStr(it, 'content', '')),
+				userName: name,
+				avatar: avatar,
+				createdAt: readStr(it, 'created_at', ''),
+				likes: readNum(it, 'likes', readNum(it, 'like_count', 0)) as number
+			} as CommentItem)
+		}
+	}
+	const meta = parsePagination(data!, page, items.length)
+	return { items: items, page: meta.page, pages: meta.pages, total: meta.total } as PageResult<CommentItem>
+}
+
+export async function postComment(videoId: string, text: string, ep: number): Promise<void> {
+	await userPost('/api/videos/' + encodeURIComponent(videoId) + '/comments', JSON.stringify({ text: text, ep: ep }))
+}
+
+export async function fetchRelated(videoId: string, page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/videos/' + encodeURIComponent(videoId) + '/related?page=' + page)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}

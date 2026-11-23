@@ -1,0 +1,100 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner">
+			<text class="brand">{{siteName}}</text>
+			<text class="section">入口</text>
+			<view class="menu-item" @click="goTopics">
+				<text class="menu-text">专题合集</text>
+			</view>
+			<view class="menu-item" @click="goPosts">
+				<text class="menu-text">图文资讯</text>
+			</view>
+			<view class="menu-item" @click="goFeed">
+				<text class="menu-text">推荐信息流</text>
+			</view>
+			<view class="menu-item" @click="goOriginal">
+				<text class="menu-text">原创专区</text>
+			</view>
+			<view class="menu-item" @click="goLong">
+				<text class="menu-text">长视频</text>
+			</view>
+			<view class="menu-item" @click="goSortNew">
+				<text class="menu-text">最近更新排序</text>
+			</view>
+			<view class="menu-item" @click="goRank">
+				<text class="menu-text">排行榜</text>
+			</view>
+
+			<text class="section">站点页面</text>
+			<view v-for="p in pages" :key="p.slug" class="menu-item" @click="openPage(p.slug, p.title)">
+				<text class="menu-text">{{p.title}}</text>
+			</view>
+
+			<text v-if="goHome.mail.length > 0 || goHome.tg.length > 0" class="section">联系</text>
+			<text v-if="goHome.mail.length > 0" class="contact">邮箱 {{goHome.mail}}</text>
+			<text v-if="goHome.tg.length > 0" class="contact">TG {{goHome.tg}}</text>
+
+			<text v-if="goHome.faqs.length > 0" class="section">常见问题</text>
+			<text v-for="(f, i) in goHome.faqs" :key="i" class="faq">{{f}}</text>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchSiteConfig, fetchSitePages, fetchGoHome } from '../../common/api/site.uts'
+	import { SitePage, GoHomeData } from '../../common/models/extra.uts'
+
+	const siteName = ref('黄果短剧')
+	const pages = ref<SitePage[]>([] as SitePage[])
+	const goHome = ref<GoHomeData>({ faqs: [] as string[], routes: [] as string[], mail: '', tg: '' } as GoHomeData)
+
+	function goTopics() { uni.navigateTo({ url: '/pages/topics/topics' }) }
+	function goPosts() { uni.navigateTo({ url: '/pages/posts/posts' }) }
+	function goFeed() { uni.navigateTo({ url: '/pages/feed/feed' }) }
+	function goOriginal() {
+		uni.navigateTo({ url: '/pages/list/list?mode=original&title=' + encodeURIComponent('原创专区') })
+	}
+	function goLong() {
+		uni.navigateTo({ url: '/pages/list/list?mode=long&title=' + encodeURIComponent('长视频') })
+	}
+	function goSortNew() {
+		uni.navigateTo({ url: '/pages/list/list?mode=sort&route=new&title=' + encodeURIComponent('最近更新') })
+	}
+	function goRank() { uni.navigateTo({ url: '/pages/rank/rank' }) }
+
+	function openPage(slug: string, title: string) {
+		uni.navigateTo({
+			url: '/pages/site-page/site-page?slug=' + encodeURIComponent(slug) + '&title=' + encodeURIComponent(title)
+		})
+	}
+
+	onLoad(() => {
+		fetchSiteConfig().then((c) => {
+			siteName.value = c.siteName
+		}).catch((_) => { })
+		fetchSitePages().then((list) => {
+			pages.value = list
+		}).catch((_) => { })
+		fetchGoHome().then((g) => {
+			goHome.value = g
+		}).catch((_) => { })
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.page-inner { padding: 16px 14px 30px 14px; }
+	.brand { color: #e8c27a; font-size: 24px; font-weight: bold; margin-bottom: 16px; }
+	.section { color: #f2f2f2; font-size: 15px; font-weight: bold; margin-top: 18px; margin-bottom: 8px; }
+	.menu-item {
+		background-color: #1c1f27; border-radius: 8px; padding: 14px;
+		margin-bottom: 8px;
+	}
+	.menu-text { color: #e8eaed; font-size: 14px; }
+	.contact { color: #b0b4bc; font-size: 13px; margin-bottom: 4px; }
+	.faq { color: #8a8e96; font-size: 12px; margin-bottom: 8px; }
+</style>

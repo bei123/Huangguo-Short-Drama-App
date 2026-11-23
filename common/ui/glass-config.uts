@@ -1,0 +1,13 @@
+/**
+ * 液态玻璃总开关。
+ * false：系统 TabBar + 无页面内真玻璃（推荐，稳定）。
+ * true：需已制作含 Liquid-Glass 依赖的自定义基座，且 Tab 切页需自测通过。
+ */
+export const USE_NATIVE_GLASS: boolean = true
+
+/**
+ * Tab 页底部留白。
+ * 系统 TabBar 时页面内容区已避开底栏，留少量即可；
+ * 真玻璃浮层时需更大（约 88~100）。
+ */
+export const TAB_BOTTOM_GAP: number = USE_NATIVE_GLASS ? 96 : 20

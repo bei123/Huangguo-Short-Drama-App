@@ -1,0 +1,153 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner">
+			<text class="brand">黄果</text>
+			<text class="hint">登录后同步收藏、历史与点赞</text>
+
+			<view class="tabs">
+				<text class="tab" :class="mode == 'login' ? 'tab-on' : ''" @click="mode = 'login'">登录</text>
+				<text class="tab" :class="mode == 'register' ? 'tab-on' : ''" @click="mode = 'register'">注册</text>
+			</view>
+
+			<input class="input" type="text" :value="username" placeholder="账号" placeholder-style="color:#6F737A" @input="onUser" />
+			<input class="input" type="password" :value="password" placeholder="密码" placeholder-style="color:#6F737A" @input="onPwd" />
+			<input v-if="mode == 'register'" class="input" type="password" :value="confirm" placeholder="确认密码" placeholder-style="color:#6F737A" @input="onConfirm" />
+
+			<view class="btn" hover-class="btn-hover" @click="submit">
+				<text class="btn-text">{{busy ? '请稍候…' : (mode == 'login' ? '登录' : '注册并登录')}}</text>
+			</view>
+			<text v-if="errorText.length > 0" class="err">{{errorText}}</text>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { loginByPassword, registerByPassword } from '../../common/api/account.uts'
+
+	const mode = ref('login')
+	const username = ref('')
+	const password = ref('')
+	const confirm = ref('')
+	const busy = ref(false)
+	const errorText = ref('')
+
+	function onUser(e: UniInputEvent) {
+		username.value = e.detail.value
+	}
+	function onPwd(e: UniInputEvent) {
+		password.value = e.detail.value
+	}
+	function onConfirm(e: UniInputEvent) {
+		confirm.value = e.detail.value
+	}
+
+	async function submit() {
+		if (busy.value) {
+			return
+		}
+		const u = username.value.trim()
+		const p = password.value
+		if (u.length == 0 || p.length == 0) {
+			errorText.value = '请输入账号和密码'
+			return
+		}
+		if (mode.value == 'register' && p != confirm.value) {
+			errorText.value = '两次密码不一致'
+			return
+		}
+		busy.value = true
+		errorText.value = ''
+		try {
+			if (mode.value == 'login') {
+				await loginByPassword(u, p)
+			} else {
+				await registerByPassword(u, p, confirm.value)
+			}
+			uni.showToast({ title: '成功', icon: 'none' })
+			setTimeout(() => {
+				uni.navigateBack()
+			}, 400)
+		} catch (e) {
+			errorText.value = '' + e
+		} finally {
+			busy.value = false
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #12141a;
+	}
+	.page-inner {
+		padding: 48px 24px 32px 24px;
+	}
+	.brand {
+		color: #E8C27A;
+		font-size: 32px;
+		font-weight: bold;
+		letter-spacing: 1px;
+	}
+	.hint {
+		margin-top: 8px;
+		margin-bottom: 28px;
+		color: #8A8E96;
+		font-size: 13px;
+	}
+	.tabs {
+		flex-direction: row;
+		margin-bottom: 18px;
+	}
+	.tab {
+		color: #8A8E96;
+		font-size: 16px;
+		margin-right: 22px;
+		padding-bottom: 8px;
+	}
+	.tab-on {
+		color: #E8C27A;
+		font-weight: bold;
+		border-bottom-width: 2px;
+		border-bottom-color: #E8C27A;
+		border-bottom-style: solid;
+	}
+	.input {
+		height: 46px;
+		background-color: #1A1D26;
+		border-radius: 10px;
+		padding-left: 14px;
+		padding-right: 14px;
+		color: #F2F3F5;
+		font-size: 15px;
+		margin-bottom: 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.btn {
+		margin-top: 12px;
+		height: 46px;
+		border-radius: 10px;
+		background-color: #E8C27A;
+		align-items: center;
+		justify-content: center;
+	}
+	.btn-hover {
+		opacity: 0.9;
+	}
+	.btn-text {
+		color: #1A1208;
+		font-size: 16px;
+		font-weight: bold;
+	}
+	.err {
+		margin-top: 14px;
+		color: #E07070;
+		font-size: 13px;
+	}
+</style>

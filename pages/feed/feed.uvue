@@ -1,0 +1,127 @@
+<template>
+	<view class="page">
+		<view class="tabs">
+			<text class="tab" :class="mode == 'recommend' ? 'tab-on' : ''" @click="switchMode('recommend')">推荐</text>
+			<text class="tab" :class="mode == 'today' ? 'tab-on' : ''" @click="switchMode('today')">今日</text>
+			<text class="tab" :class="mode == 'following' ? 'tab-on' : ''" @click="switchMode('following')">关注</text>
+		</view>
+		<!-- #ifdef APP -->
+		<scroll-view class="body" direction="vertical" @scrolltolower="loadMore">
+		<!-- #endif -->
+			<view class="body-inner">
+				<view v-if="loading && items.length == 0" class="state-box">
+					<text class="state-text">加载中…</text>
+				</view>
+				<hg-empty v-else-if="items.length == 0" mark="流" title="暂无内容"></hg-empty>
+				<view v-else class="grid">
+					<view v-for="item in items" :key="item.id" class="grid-card">
+						<hg-video-card
+							:id="item.id"
+							:title="item.title"
+							:cover="item.cover"
+							:score="item.score"
+							:badge="item.badge"
+							:sub="item.episodeCount + '集'"
+							:cover-w="cardW"
+							:cover-h="cardH"
+							:tight="true"
+						></hg-video-card>
+					</view>
+				</view>
+				<text v-if="loadingMore" class="footer">加载更多…</text>
+			</view>
+		<!-- #ifdef APP -->
+		</scroll-view>
+		<!-- #endif -->
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { fetchFeedRecommend, fetchFeedToday, fetchFollowingVideos } from '../../common/api/content.uts'
+	import { VideoCard } from '../../common/models/video.uts'
+	import { isLoggedIn } from '../../common/auth/session.uts'
+
+	const mode = ref('recommend')
+	const items = ref<VideoCard[]>([] as VideoCard[])
+	const loading = ref(true)
+	const loadingMore = ref(false)
+	const page = ref(1)
+	const pages = ref(1)
+	const winW = uni.getWindowInfo().windowWidth
+	const cardW = Math.floor((winW - 32 - 16) / 3)
+	const cardH = Math.floor(cardW * 1.36)
+
+	async function loadPage(p: number): Promise<VideoCard[]> {
+		if (mode.value == 'today') {
+			const res = await fetchFeedToday(p)
+			page.value = res.page
+			pages.value = res.pages
+			return res.items
+		}
+		if (mode.value == 'following') {
+			const res = await fetchFollowingVideos(p)
+			page.value = res.page
+			pages.value = res.pages
+			return res.items
+		}
+		const res = await fetchFeedRecommend(p)
+		page.value = res.page
+		pages.value = res.pages
+		return res.items
+	}
+
+	async function reload() {
+		loading.value = true
+		items.value = [] as VideoCard[]
+		try {
+			items.value = await loadPage(1)
+		} catch (e) {
+			console.log('[feed] ' + e)
+			uni.showToast({ title: '' + e, icon: 'none' })
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function loadMore() {
+		if (page.value >= pages.value || loadingMore.value) {
+			return
+		}
+		loadingMore.value = true
+		try {
+			const next = await loadPage(page.value + 1)
+			const merged = items.value.slice(0)
+			for (let i = 0; i < next.length; i++) {
+				merged.push(next[i])
+			}
+			items.value = merged
+		} catch (_) { } finally {
+			loadingMore.value = false
+		}
+	}
+
+	function switchMode(m: string) {
+		if (m == 'following' && !isLoggedIn()) {
+			uni.navigateTo({ url: '/pages/login/login' })
+			return
+		}
+		mode.value = m
+		reload()
+	}
+
+	onLoad(() => { reload() })
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.tabs { flex-direction: row; padding: 12px 16px; }
+	.tab { color: #8A8E96; font-size: 15px; margin-right: 20px; }
+	.tab-on { color: #E8C27A; font-weight: bold; }
+	.body { flex: 1; }
+	.body-inner { padding: 0 16px 24px 16px; }
+	.state-box { padding-top: 60px; align-items: center; }
+	.state-text { color: #8A8E96; font-size: 14px; }
+	.grid { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
+	.grid-card { width: 31%; margin-bottom: 16px; }
+	.footer { text-align: center; color: #6F737A; font-size: 12px; padding: 10px; }
+</style>

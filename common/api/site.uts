@@ -1,0 +1,132 @@
+import { publicGet, dynamicGet, dynamicPost } from '../http/client.uts'
+import { SiteConfig, SitePage, SiteLink, GoHomeData } from '../models/extra.uts'
+import { resolveCoverUrl } from '../http/config.uts'
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	return n != null ? (n as number) : fallback
+}
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	return v != null ? (v as string).trim() : fallback
+}
+
+export async function fetchSiteConfig(): Promise<SiteConfig> {
+	const res = await publicGet('/api/site/config')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { siteName: '黄果短剧', logo: '', cdnHost: '' } as SiteConfig
+	}
+	return {
+		siteName: readStr(data!, 'site_name', '黄果短剧'),
+		logo: resolveCoverUrl(readStr(data!, 'logo', '')),
+		cdnHost: readStr(data!, 'cdn_host', '')
+	} as SiteConfig
+}
+
+export async function fetchSitePages(): Promise<SitePage[]> {
+	const res = await publicGet('/api/site/pages')
+	const data = res.getJSON('data')
+	const out: SitePage[] = []
+	if (data == null) {
+		return out
+	}
+	const arr = data!.getArray('items')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const it = list[i] as UTSJSONObject
+		out.push({
+			slug: readStr(it, 'slug', ''),
+			title: readStr(it, 'title', ''),
+			hasContent: it.getBoolean('has_content') ?? true
+		} as SitePage)
+	}
+	return out
+}
+
+export async function fetchSitePage(slug: string): Promise<UTSJSONObject> {
+	const res = await publicGet('/api/site/pages/' + encodeURIComponent(slug))
+	const data = res.getJSON('data')
+	return data != null ? data! : ({} as UTSJSONObject)
+}
+
+export async function fetchSiteLinks(): Promise<SiteLink[]> {
+	const res = await publicGet('/api/site/links')
+	const data = res.getJSON('data')
+	const out: SiteLink[] = []
+	if (data == null) {
+		return out
+	}
+	const arr = data!.getArray('text_link')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const it = list[i] as UTSJSONObject
+		out.push({
+			id: readNum(it, 'id', 0) as number,
+			name: readStr(it, 'name', ''),
+			url: readStr(it, 'url', ''),
+			desc: readStr(it, 'desc', '')
+		} as SiteLink)
+	}
+	return out
+}
+
+export async function fetchGoHome(): Promise<GoHomeData> {
+	const res = await dynamicGet('/api/site/go-home')
+	const data = res.getJSON('data')
+	const faqs: string[] = []
+	const routes: string[] = []
+	if (data == null) {
+		return { faqs: faqs, routes: routes, mail: '', tg: '' } as GoHomeData
+	}
+	const faqArr = data!.getArray('faqs')
+	if (faqArr != null) {
+		const list = faqArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i] as UTSJSONObject
+			const q = readStr(it, 'q', readStr(it, 'question', ''))
+			const a = readStr(it, 'a', readStr(it, 'answer', ''))
+			if (q.length > 0) {
+				faqs.push(q + (a.length > 0 ? '：' + a : ''))
+			}
+		}
+	}
+	const routeArr = data!.getArray('routes')
+	if (routeArr != null) {
+		const list = routeArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i] as UTSJSONObject
+			const u = readStr(it, 'url', readStr(it, 'name', ''))
+			if (u.length > 0) {
+				routes.push(u)
+			}
+		}
+	}
+	let mail = ''
+	let tg = ''
+	const contacts = data!.getJSON('contacts')
+	if (contacts != null) {
+		mail = readStr(contacts!, 'mail', '')
+		tg = readStr(contacts!, 'tg', '')
+	}
+	return { faqs: faqs, routes: routes, mail: mail, tg: tg } as GoHomeData
+}
+
+export async function fetchTransit(): Promise<UTSJSONObject> {
+	const res = await publicGet('/api/site/transit')
+	const data = res.getJSON('data')
+	return data != null ? data! : ({} as UTSJSONObject)
+}
+
+export async function siteClick(type: string, id: number): Promise<void> {
+	try {
+		await dynamicPost('/api/site/click', JSON.stringify({ type: type, id: id }))
+	} catch (_) { }
+}

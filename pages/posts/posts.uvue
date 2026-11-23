@@ -1,0 +1,132 @@
+<template>
+	<view class="page">
+		<scroll-view class="tabs" direction="horizontal" :show-scrollbar="false">
+			<text class="tab" :class="activeRoute.length == 0 ? 'tab-on' : ''" @click="switchCat('')">全部</text>
+			<text
+				v-for="c in cats"
+				:key="c.id"
+				class="tab"
+				:class="activeRoute == c.route ? 'tab-on' : ''"
+				@click="switchCat(c.route)"
+			>{{c.name}}</text>
+		</scroll-view>
+		<!-- #ifdef APP -->
+		<scroll-view class="body" direction="vertical" @scrolltolower="loadMore">
+		<!-- #endif -->
+			<view class="body-inner">
+				<view v-if="loading && items.length == 0" class="state-box">
+					<text class="state-text">加载中…</text>
+				</view>
+				<hg-empty v-if="!loading && items.length == 0" mark="讯" title="暂无图文"></hg-empty>
+				<view v-for="it in items" :key="it.id" class="card" hover-class="card-hover" @click="openPost(it.id)">
+					<hg-cover :src="it.cover" :width="100" :height="70" :radius="8"></hg-cover>
+					<view class="meta">
+						<text class="title" max-lines="2">{{it.title}}</text>
+						<text class="sub">热度 {{formatHot(it.hot)}} · {{it.createdAt}}</text>
+					</view>
+				</view>
+				<text v-if="loadingMore" class="footer">加载更多…</text>
+			</view>
+		<!-- #ifdef APP -->
+		</scroll-view>
+		<!-- #endif -->
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { fetchPostCategories, fetchPosts, fetchPostsByCategory } from '../../common/api/posts.uts'
+	import { PostCard } from '../../common/models/extra.uts'
+	import { CategoryItem } from '../../common/models/video.uts'
+
+	const cats = ref<CategoryItem[]>([] as CategoryItem[])
+	const activeRoute = ref('')
+	const items = ref<PostCard[]>([] as PostCard[])
+	const loading = ref(true)
+	const loadingMore = ref(false)
+	const page = ref(1)
+	const pages = ref(1)
+
+	function formatHot(n: number): string {
+		if (n >= 10000) {
+			return (n / 10000).toFixed(1) + '万'
+		}
+		return '' + n
+	}
+
+	async function loadPage(p: number): Promise<PostCard[]> {
+		const res = activeRoute.value.length > 0
+			? await fetchPostsByCategory(activeRoute.value, p)
+			: await fetchPosts(p)
+		page.value = res.page
+		pages.value = res.pages
+		return res.items
+	}
+
+	async function reload() {
+		loading.value = true
+		items.value = [] as PostCard[]
+		try {
+			items.value = await loadPage(1)
+		} catch (e) {
+			console.log('[posts] ' + e)
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function loadMore() {
+		if (page.value >= pages.value || loadingMore.value) {
+			return
+		}
+		loadingMore.value = true
+		try {
+			const next = await loadPage(page.value + 1)
+			const merged = items.value.slice(0)
+			for (let i = 0; i < next.length; i++) {
+				merged.push(next[i])
+			}
+			items.value = merged
+		} catch (_) { } finally {
+			loadingMore.value = false
+		}
+	}
+
+	function switchCat(route: string) {
+		activeRoute.value = route
+		reload()
+	}
+
+	function openPost(id: string) {
+		uni.navigateTo({ url: '/pages/post-detail/post-detail?id=' + encodeURIComponent(id) })
+	}
+
+	onLoad(() => {
+		fetchPostCategories().then((list) => {
+			cats.value = list
+		}).catch((_) => { })
+		reload()
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.tabs { height: 44px; flex-direction: row; padding-left: 12px; }
+	.tab {
+		color: #8A8E96; font-size: 14px; padding: 10px 12px; margin-right: 4px;
+	}
+	.tab-on { color: #E8C27A; font-weight: bold; }
+	.body { flex: 1; }
+	.body-inner { padding: 8px 16px 24px 16px; }
+	.state-box { padding-top: 60px; align-items: center; }
+	.state-text { color: #8A8E96; font-size: 14px; }
+	.card {
+		flex-direction: row; background-color: #1A1D26; border-radius: 12px;
+		padding: 12px; margin-bottom: 10px;
+		border-width: 1px; border-style: solid; border-color: #2A2E38;
+	}
+	.card-hover { background-color: #22262F; }
+	.meta { flex: 1; margin-left: 12px; justify-content: center; }
+	.title { color: #F2F3F5; font-size: 14px; font-weight: bold; text-overflow: ellipsis; }
+	.sub { margin-top: 6px; color: #8A8E96; font-size: 11px; }
+	.footer { text-align: center; color: #6F737A; font-size: 12px; padding: 10px; }
+</style>

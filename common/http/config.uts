@@ -1,0 +1,16 @@
+export const HG_BASE_URL = 'https://huangguoai.com'
+export const HG_PIC_CDN = 'https://pic.qnlycc.cn'
+export const HG_REFERER = 'https://huangguoai.com/'
+
+export function resolveCoverUrl(raw: string): string {
+	if (raw.length == 0) {
+		return ''
+	}
+	if (raw.indexOf('http://') == 0 || raw.indexOf('https://') == 0) {
+		return raw
+	}
+	if (raw.indexOf('/') == 0) {
+		return HG_PIC_CDN + raw
+	}
+	return HG_PIC_CDN + '/' + raw
+}

@@ -1,0 +1,215 @@
+{
+	"pages": [
+		{
+			"path": "pages/home/home",
+			"style": {
+				"navigationBarTitleText": "黄果短剧",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
+			"path": "pages/category/category",
+			"style": {
+				"navigationBarTitleText": "发现",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/search/search",
+			"style": {
+				"navigationBarTitleText": "搜索",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/mine/mine",
+			"style": {
+				"navigationBarTitleText": "我的",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/profile-edit/profile-edit",
+			"style": {
+				"navigationBarTitleText": "编辑资料",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/my-list/my-list",
+			"style": {
+				"navigationBarTitleText": "我的列表",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/messages/messages",
+			"style": {
+				"navigationBarTitleText": "消息",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/rank/rank",
+			"style": {
+				"navigationBarTitleText": "榜单",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/list/list",
+			"style": {
+				"navigationBarTitleText": "列表",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/detail/detail",
+			"style": {
+				"navigationBarTitleText": "详情",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/topics/topics",
+			"style": {
+				"navigationBarTitleText": "专题",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/topic-detail/topic-detail",
+			"style": {
+				"navigationBarTitleText": "专题详情",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/posts/posts",
+			"style": {
+				"navigationBarTitleText": "图文",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/post-detail/post-detail",
+			"style": {
+				"navigationBarTitleText": "图文详情",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/author/author",
+			"style": {
+				"navigationBarTitleText": "作者",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/feed/feed",
+			"style": {
+				"navigationBarTitleText": "信息流",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/more/more",
+			"style": {
+				"navigationBarTitleText": "更多",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		},
+		{
+			"path": "pages/site-page/site-page",
+			"style": {
+				"navigationBarTitleText": "页面",
+				"navigationBarBackgroundColor": "#12141a",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#12141a"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "white",
+		"navigationBarTitleText": "黄果短剧",
+		"navigationBarBackgroundColor": "#12141a",
+		"backgroundColor": "#12141a"
+	},
+	"tabBar": {
+		"color": "#8A8E96",
+		"selectedColor": "#E8C27A",
+		"backgroundColor": "#16181F",
+		"borderStyle": "black",
+		"list": [
+			{
+				"pagePath": "pages/home/home",
+				"text": "首页",
+				"iconPath": "static/tab/home.png",
+				"selectedIconPath": "static/tab/home-active.png"
+			},
+			{
+				"pagePath": "pages/category/category",
+				"text": "发现",
+				"iconPath": "static/tab/cate.png",
+				"selectedIconPath": "static/tab/cate-active.png"
+			},
+			{
+				"pagePath": "pages/search/search",
+				"text": "搜索",
+				"iconPath": "static/tab/search.png",
+				"selectedIconPath": "static/tab/search-active.png"
+			},
+			{
+				"pagePath": "pages/mine/mine",
+				"text": "我的",
+				"iconPath": "static/tab/mine.png",
+				"selectedIconPath": "static/tab/mine-active.png"
+			}
+		]
+	},
+	"uniIdRouter": {}
+}

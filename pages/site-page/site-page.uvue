@@ -1,0 +1,70 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner">
+			<view v-if="loading" class="state-box">
+				<text class="state-text">加载中…</text>
+			</view>
+			<template v-else>
+				<text v-if="subtitle.length > 0" class="subtitle">{{subtitle}}</text>
+				<view v-for="(c, i) in cards" :key="i" class="card">
+					<text class="card-title">{{c.title}}</text>
+					<text class="card-content">{{c.content}}</text>
+				</view>
+				<text v-if="cards.length == 0" class="state-text">暂无内容</text>
+			</template>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchSitePage } from '../../common/api/site.uts'
+
+	type Card = { title: string, content: string }
+
+	const loading = ref(true)
+	const subtitle = ref('')
+	const cards = ref<Card[]>([] as Card[])
+
+	onLoad((options) => {
+		const slug = options['slug'] ?? ''
+		const title = options['title'] ?? '页面'
+		uni.setNavigationBarTitle({ title: title })
+		fetchSitePage(slug).then((data) => {
+			subtitle.value = data.getString('subtitle') ?? ''
+			const out: Card[] = []
+			const arr = data.getArray('cards')
+			if (arr != null) {
+				const list = arr as Array<any>
+				for (let i = 0; i < list.length; i++) {
+					const it = list[i] as UTSJSONObject
+					out.push({
+						title: it.getString('title') ?? '',
+						content: it.getString('content') ?? ''
+					} as Card)
+				}
+			}
+			cards.value = out
+		}).catch((e) => {
+			console.log('[site-page] ' + e)
+		}).finally(() => {
+			loading.value = false
+		})
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.page-inner { padding: 14px; }
+	.state-box { padding-top: 80px; align-items: center; }
+	.state-text { color: #9aa0aa; font-size: 14px; }
+	.subtitle { color: #8a8e96; font-size: 13px; margin-bottom: 14px; }
+	.card {
+		background-color: #1c1f27; border-radius: 8px; padding: 12px; margin-bottom: 10px;
+	}
+	.card-title { color: #e8c27a; font-size: 15px; font-weight: bold; }
+	.card-content { margin-top: 8px; color: #c8ccd3; font-size: 13px; }
+</style>

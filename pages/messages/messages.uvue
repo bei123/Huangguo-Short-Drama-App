@@ -1,0 +1,98 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical" @scrolltolower="loadMore">
+	<!-- #endif -->
+		<view class="page-inner">
+			<view v-if="items.length > 0" class="read-all" @click="doReadAll">
+				<text class="read-all-text">全部标为已读</text>
+			</view>
+			<view v-if="loading && items.length == 0" class="state-box">
+				<text class="state-text">加载中…</text>
+			</view>
+			<hg-empty v-else-if="items.length == 0" mark="讯" title="暂无消息"></hg-empty>
+			<view v-for="it in items" :key="it.id" class="item" :class="it.read ? '' : 'item-unread'">
+				<text class="title">{{it.title}}</text>
+				<text class="content">{{it.content}}</text>
+				<text class="time">{{it.createdAt}}{{it.read ? '' : ' · 未读'}}</text>
+			</view>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchMyMessages, readAllMessages } from '../../common/api/interact.uts'
+	import { MessageItem } from '../../common/models/extra.uts'
+
+	const loading = ref(true)
+	const items = ref<MessageItem[]>([] as MessageItem[])
+	const page = ref(1)
+	const pages = ref(1)
+
+	async function reload() {
+		loading.value = true
+		try {
+			const res = await fetchMyMessages(1)
+			items.value = res.items
+			page.value = res.page
+			pages.value = res.pages
+		} catch (e) {
+			console.log('[msg] ' + e)
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function loadMore() {
+		if (page.value >= pages.value) {
+			return
+		}
+		try {
+			const res = await fetchMyMessages(page.value + 1)
+			const merged = items.value.slice(0)
+			for (let i = 0; i < res.items.length; i++) {
+				merged.push(res.items[i])
+			}
+			items.value = merged
+			page.value = res.page
+			pages.value = res.pages
+		} catch (_) { }
+	}
+
+	async function doReadAll() {
+		try {
+			await readAllMessages()
+			reload()
+		} catch (_) { }
+	}
+
+	onLoad(() => {
+		reload()
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.page-inner { padding: 14px 16px 28px 16px; }
+	.read-all { align-items: flex-end; margin-bottom: 12px; }
+	.read-all-text { color: #E8C27A; font-size: 13px; }
+	.state-box { padding-top: 72px; align-items: center; }
+	.state-text { color: #8A8E96; font-size: 14px; }
+	.item {
+		background-color: #1A1D26;
+		border-radius: 12px;
+		padding: 14px;
+		margin-bottom: 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.item-unread {
+		border-color: #3A3428;
+		background-color: #1E1C18;
+	}
+	.title { color: #F2F3F5; font-size: 15px; font-weight: bold; }
+	.content { margin-top: 6px; color: #C8CCD3; font-size: 13px; }
+	.time { margin-top: 8px; color: #6F737A; font-size: 11px; }
+</style>

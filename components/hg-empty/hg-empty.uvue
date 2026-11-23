@@ -1,0 +1,83 @@
+<template>
+	<view class="empty">
+		<view class="empty-mark">
+			<text class="empty-mark-text">{{mark}}</text>
+		</view>
+		<text class="empty-title">{{title}}</text>
+		<text v-if="desc.length > 0" class="empty-desc">{{desc}}</text>
+		<view v-if="action.length > 0" class="empty-btn" @click="onAction">
+			<text class="empty-btn-text">{{action}}</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	const props = defineProps({
+		mark: { type: String, default: '果' },
+		title: { type: String, default: '暂无内容' },
+		desc: { type: String, default: '' },
+		action: { type: String, default: '' }
+	})
+
+	const emit = defineEmits(['action'])
+
+	function onAction() {
+		emit('action')
+	}
+</script>
+
+<style>
+	.empty {
+		padding-top: 72px;
+		padding-bottom: 40px;
+		padding-left: 32px;
+		padding-right: 32px;
+		align-items: center;
+	}
+
+	.empty-mark {
+		width: 56px;
+		height: 56px;
+		border-radius: 16px;
+		background-color: #2A261C;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 16px;
+	}
+
+	.empty-mark-text {
+		color: #E8C27A;
+		font-size: 22px;
+		font-weight: bold;
+	}
+
+	.empty-title {
+		color: #C8CCD3;
+		font-size: 15px;
+		text-align: center;
+	}
+
+	.empty-desc {
+		margin-top: 8px;
+		color: #6F737A;
+		font-size: 13px;
+		text-align: center;
+	}
+
+	.empty-btn {
+		margin-top: 18px;
+		height: 36px;
+		padding-left: 18px;
+		padding-right: 18px;
+		background-color: #E8C27A;
+		border-radius: 10px;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.empty-btn-text {
+		color: #1A1208;
+		font-size: 13px;
+		font-weight: bold;
+	}
+</style>

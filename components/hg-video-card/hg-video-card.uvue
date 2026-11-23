@@ -1,0 +1,116 @@
+<template>
+	<view class="card" :class="tight ? 'card-tight' : ''" :style="{ width: coverW + 'px' }" hover-class="card-hover" @click="onTap">
+		<view class="card-cover-wrap" :style="{ width: coverW + 'px', height: coverH + 'px' }">
+			<hg-cover :src="cover" :width="coverW" :height="coverH" :radius="10"></hg-cover>
+			<view v-if="badge.length > 0" class="card-badge">
+				<text class="card-badge-text">{{badge}}</text>
+			</view>
+			<view v-if="scoreText.length > 0" class="card-score">
+				<text class="card-score-text">{{scoreText}}</text>
+			</view>
+		</view>
+		<text class="card-title" max-lines="2">{{title}}</text>
+		<text v-if="sub.length > 0" class="card-sub" max-lines="1">{{sub}}</text>
+	</view>
+</template>
+
+<script setup lang="uts">
+	const props = defineProps({
+		id: { type: String, default: '' },
+		title: { type: String, default: '' },
+		cover: { type: String, default: '' },
+		score: { type: Number, default: 0 },
+		badge: { type: String, default: '' },
+		sub: { type: String, default: '' },
+		coverW: { type: Number, default: 112 },
+		coverH: { type: Number, default: 154 },
+		/** 网格内去掉右边距 */
+		tight: { type: Boolean, default: false }
+	})
+
+	const scoreText = computed((): string => {
+		if (props.score <= 0) {
+			return ''
+		}
+		return props.score.toFixed(1)
+	})
+
+	function onTap() {
+		if (props.id.length == 0) {
+			return
+		}
+		uni.navigateTo({
+			url: '/pages/detail/detail?id=' + encodeURIComponent(props.id)
+		})
+	}
+</script>
+
+<style>
+	.card {
+		margin-right: 12px;
+	}
+
+	.card-tight {
+		margin-right: 0;
+	}
+
+	.card-hover {
+		opacity: 0.82;
+	}
+
+	.card-cover-wrap {
+		position: relative;
+		border-radius: 10px;
+		overflow: hidden;
+		background-color: #1A1D26;
+	}
+
+	.card-badge {
+		position: absolute;
+		left: 6px;
+		top: 6px;
+		background-color: rgba(196, 74, 58, 0.92);
+		padding-left: 6px;
+		padding-right: 6px;
+		padding-top: 2px;
+		padding-bottom: 2px;
+		border-radius: 4px;
+	}
+
+	.card-badge-text {
+		color: #ffffff;
+		font-size: 10px;
+	}
+
+	.card-score {
+		position: absolute;
+		right: 6px;
+		bottom: 6px;
+		background-color: rgba(14, 16, 21, 0.7);
+		padding-left: 6px;
+		padding-right: 6px;
+		padding-top: 2px;
+		padding-bottom: 2px;
+		border-radius: 4px;
+	}
+
+	.card-score-text {
+		color: #E8C27A;
+		font-size: 11px;
+		font-weight: bold;
+	}
+
+	.card-title {
+		margin-top: 8px;
+		color: #F2F3F5;
+		font-size: 13px;
+		text-overflow: ellipsis;
+	}
+
+	.card-sub {
+		margin-top: 3px;
+		color: #8A8E96;
+		font-size: 11px;
+		text-overflow: ellipsis;
+	}
+</style>

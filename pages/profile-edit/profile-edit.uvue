@@ -1,0 +1,75 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner">
+			<input class="input" type="text" :value="nickname" placeholder="昵称" placeholder-style="color:#6f737a" @input="onNick" />
+			<input class="input" type="text" :value="sign" placeholder="签名" placeholder-style="color:#6f737a" @input="onSign" />
+			<textarea class="area" :value="desc" placeholder="简介" placeholder-style="color:#6f737a" @input="onDesc"></textarea>
+			<view class="btn" @click="save">
+				<text class="btn-text">{{busy ? '保存中…' : '保存资料'}}</text>
+			</view>
+			<text v-if="errorText.length > 0" class="err">{{errorText}}</text>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { getUser } from '../../common/auth/session.uts'
+	import { updateProfile } from '../../common/api/account.uts'
+
+	const nickname = ref('')
+	const sign = ref('')
+	const desc = ref('')
+	const busy = ref(false)
+	const errorText = ref('')
+
+	function onNick(e: UniInputEvent) { nickname.value = e.detail.value }
+	function onSign(e: UniInputEvent) { sign.value = e.detail.value }
+	function onDesc(e: UniInputEvent) { desc.value = e.detail.value }
+
+	async function save() {
+		if (busy.value) { return }
+		busy.value = true
+		errorText.value = ''
+		try {
+			await updateProfile(nickname.value.trim(), sign.value.trim(), desc.value.trim())
+			uni.showToast({ title: '已保存', icon: 'none' })
+			setTimeout(() => { uni.navigateBack() }, 400)
+		} catch (e) {
+			errorText.value = '' + e
+		} finally {
+			busy.value = false
+		}
+	}
+
+	onLoad(() => {
+		const u = getUser()
+		if (u != null) {
+			nickname.value = u.nickname
+			sign.value = u.sign
+			desc.value = u.desc
+		}
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.page-inner { padding: 20px 16px; }
+	.input {
+		height: 44px; background-color: #1c1f27; border-radius: 8px;
+		padding-left: 14px; padding-right: 14px; color: #f2f2f2; font-size: 15px; margin-bottom: 12px;
+	}
+	.area {
+		height: 120px; background-color: #1c1f27; border-radius: 8px;
+		padding: 12px 14px; color: #f2f2f2; font-size: 15px; margin-bottom: 16px;
+	}
+	.btn {
+		height: 44px; border-radius: 8px; background-color: #c4a36a;
+		align-items: center; justify-content: center;
+	}
+	.btn-text { color: #1a1a1a; font-size: 16px; font-weight: bold; }
+	.err { margin-top: 12px; color: #e07070; font-size: 13px; }
+</style>

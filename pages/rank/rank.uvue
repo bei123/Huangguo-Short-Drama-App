@@ -1,0 +1,143 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner">
+			<view v-if="loading" class="state-box">
+				<text class="state-text">加载中…</text>
+			</view>
+			<view v-else-if="errorText.length > 0" class="state-box" @click="reload">
+				<text class="state-text">{{errorText}}</text>
+				<text class="state-action">点击重试</text>
+			</view>
+			<view v-else>
+				<view v-for="item in items" :key="item.videoId" class="rank-item" @click="openVideo(item.videoId)">
+					<text class="rank-no" :class="item.rank <= 3 ? 'rank-top' : ''">{{item.rank}}</text>
+					<hg-cover :src="item.cover" :width="72" :height="96" :radius="6"></hg-cover>
+					<view class="rank-meta">
+						<text class="rank-title">{{item.title}}</text>
+						<text class="rank-sub">{{item.cateName}} · {{item.episodeCount}}集 · {{item.isFinished ? '已完结' : '连载中'}}</text>
+						<text class="rank-metric">{{item.metricLabel}} {{item.metricValue}}</text>
+					</view>
+					<text class="rank-score">{{item.score > 0 ? item.score.toFixed(1) : '-'}}</text>
+				</view>
+			</view>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchRanks } from '../../common/api/huangguo.uts'
+	import { RankItem } from '../../common/models/video.uts'
+
+	const type = ref('hot')
+	const loading = ref(true)
+	const errorText = ref('')
+	const items = ref<RankItem[]>([] as RankItem[])
+
+	function openVideo(id: string) {
+		uni.navigateTo({
+			url: '/pages/detail/detail?id=' + encodeURIComponent(id)
+		})
+	}
+
+	async function reload() {
+		loading.value = true
+		errorText.value = ''
+		try {
+			items.value = await fetchRanks(type.value)
+			console.log('[rank] type=' + type.value + ' n=' + items.value.length)
+		} catch (e) {
+			errorText.value = '' + e
+			console.log('[rank] fail ' + e)
+		} finally {
+			loading.value = false
+		}
+	}
+
+	onLoad((options) => {
+		const t = options['type'] ?? 'hot'
+		const title = options['title'] ?? '榜单'
+		type.value = t
+		uni.setNavigationBarTitle({ title: title })
+		reload()
+	})
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #12141a;
+	}
+
+	.page-inner {
+		padding: 12px 14px 24px 14px;
+	}
+
+	.state-box {
+		padding-top: 80px;
+		align-items: center;
+	}
+
+	.state-text {
+		color: #9aa0aa;
+		font-size: 14px;
+	}
+
+	.state-action {
+		margin-top: 8px;
+		color: #e8c27a;
+		font-size: 13px;
+	}
+
+	.rank-item {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 14px;
+	}
+
+	.rank-no {
+		width: 28px;
+		color: #8a8e96;
+		font-size: 18px;
+		font-weight: bold;
+		text-align: center;
+		margin-right: 6px;
+	}
+
+	.rank-top {
+		color: #e8c27a;
+	}
+
+	.rank-meta {
+		flex: 1;
+		margin-left: 10px;
+		margin-right: 8px;
+	}
+
+	.rank-title {
+		color: #f2f2f2;
+		font-size: 15px;
+		text-overflow: ellipsis;
+	}
+
+	.rank-sub {
+		margin-top: 4px;
+		color: #8a8e96;
+		font-size: 12px;
+	}
+
+	.rank-metric {
+		margin-top: 4px;
+		color: #c4a36a;
+		font-size: 12px;
+	}
+
+	.rank-score {
+		color: #f5c451;
+		font-size: 16px;
+		font-weight: bold;
+	}
+</style>

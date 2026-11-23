@@ -1,0 +1,171 @@
+<script setup>
+	import { installLiquidTabBar } from './common/ui/liquid-tab.uts'
+
+	// #ifdef APP-ANDROID || APP-HARMONY
+	let firstBackTime = 0
+	// #endif
+
+	onLaunch(() => {
+		console.log('[app] launch Huangguo Short Drama')
+		// Activity 就绪后再挂载原生液态玻璃 TabBar（需自定义基座）
+		setTimeout(() => {
+			try {
+				installLiquidTabBar()
+			} catch (e) {
+				console.log('[liquid-tab] install fail ' + e)
+			}
+		}, 400)
+	})
+
+	onAppShow(() => {
+		console.log('[app] show')
+	})
+
+	onAppHide(() => {
+		console.log('[app] hide')
+	})
+
+	// #ifdef APP-ANDROID || APP-HARMONY
+	onLastPageBackPress(() => {
+		if (firstBackTime == 0) {
+			uni.showToast({
+				title: '再按一次退出应用',
+				position: 'bottom',
+			})
+			firstBackTime = Date.now()
+			setTimeout(() => {
+				firstBackTime = 0
+			}, 2000)
+		} else if (Date.now() - firstBackTime < 2000) {
+			firstBackTime = Date.now()
+			uni.exit()
+		}
+	})
+
+	onExit(() => {
+		console.log('[app] exit')
+	})
+	// #endif
+</script>
+
+<style>
+	.uni-row {
+		flex-direction: row;
+	}
+
+	.uni-column {
+		flex-direction: column;
+	}
+
+	/* —— 黄果通用类 —— */
+	.hg-page {
+		flex: 1;
+		background-color: #12141a;
+	}
+
+	.hg-page-pad {
+		padding-left: 16px;
+		padding-right: 16px;
+		padding-top: 12px;
+		padding-bottom: 28px;
+		background-color: #12141a;
+	}
+
+	.hg-section {
+		margin-top: 20px;
+	}
+
+	.hg-section-head {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.hg-section-title {
+		color: #F2F3F5;
+		font-size: 17px;
+		font-weight: bold;
+	}
+
+	.hg-section-more {
+		color: #8A8E96;
+		font-size: 13px;
+	}
+
+	.hg-state {
+		padding-top: 88px;
+		align-items: center;
+		padding-left: 24px;
+		padding-right: 24px;
+	}
+
+	.hg-state-text {
+		color: #8A8E96;
+		font-size: 14px;
+		text-align: center;
+	}
+
+	.hg-state-action {
+		margin-top: 12px;
+		color: #E8C27A;
+		font-size: 13px;
+	}
+
+	.hg-footer-tip {
+		text-align: center;
+		color: #6F737A;
+		font-size: 12px;
+		padding: 12px;
+	}
+
+	.hg-surface {
+		background-color: #1A1D26;
+		border-radius: 12px;
+	}
+
+	.hg-btn-primary {
+		height: 44px;
+		border-radius: 10px;
+		background-color: #E8C27A;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.hg-btn-primary-text {
+		color: #1A1208;
+		font-size: 15px;
+		font-weight: bold;
+	}
+
+	.hg-divider {
+		height: 1px;
+		background-color: #2A2E38;
+	}
+
+	.hg-chip {
+		background-color: #1A1D26;
+		color: #C8CCD3;
+		font-size: 13px;
+		padding: 8px 12px;
+		border-radius: 8px;
+		margin-right: 8px;
+		margin-bottom: 8px;
+	}
+
+	.hg-text {
+		color: #F2F3F5;
+	}
+
+	.hg-text-2 {
+		color: #C8CCD3;
+	}
+
+	.hg-text-3 {
+		color: #8A8E96;
+	}
+
+	.hg-gold {
+		color: #E8C27A;
+	}
+</style>

@@ -1,0 +1,147 @@
+import { userGet, userPost, userPatch } from '../http/client.uts'
+import { emptyUser, HgUser, saveSession, clearSession, updateUser, getToken } from '../auth/session.uts'
+import { resolveCoverUrl } from '../http/config.uts'
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	if (n != null) {
+		return n as number
+	}
+	return fallback
+}
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	return v != null ? (v as string) : fallback
+}
+
+function readIdArr(obj: UTSJSONObject, key: string): number[] {
+	const out: number[] = []
+	const arr = obj.getArray(key)
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const n = parseFloat('' + list[i])
+		if (!isNaN(n)) {
+			out.push(n as number)
+		}
+	}
+	return out
+}
+
+export function parseUser(obj: UTSJSONObject): HgUser {
+	const u = emptyUser()
+	u.id = readNum(obj, 'id', 0) as number
+	u.username = readStr(obj, 'username', '')
+	u.nickname = readStr(obj, 'nickname', u.username)
+	u.avatar = resolveCoverUrl(readStr(obj, 'avatar', ''))
+	u.avatarColor = readStr(obj, 'avatar_color', '#8C8C8C')
+	u.sign = readStr(obj, 'sign', '')
+	u.desc = readStr(obj, 'desc', '')
+	const counts = obj.getJSON('counts')
+	if (counts != null) {
+		u.likeCount = readNum(counts!, 'like', 0) as number
+		u.collectCount = readNum(counts!, 'collect', 0) as number
+		u.followingCount = readNum(counts!, 'following', 0) as number
+		u.historyCount = readNum(counts!, 'history', 0) as number
+	}
+	const interactions = obj.getJSON('interactions')
+	if (interactions != null) {
+		u.favoriteVideoIds = readIdArr(interactions!, 'favorite_video_ids')
+		u.likeVideoIds = readIdArr(interactions!, 'like_video_ids')
+		u.followUserIds = readIdArr(interactions!, 'follow_user_ids')
+	}
+	return u
+}
+
+export async function loginByPassword(username: string, password: string): Promise<HgUser> {
+	const body = JSON.stringify({ username: username, password: password })
+	const res = await userPost('/api/account/loginByPassword', body)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('login empty')
+	}
+	const token = data!.getString('token') ?? ''
+	const userObj = data!.getJSON('user')
+	if (token.length == 0 || userObj == null) {
+		throw new Error('login token empty')
+	}
+	const user = parseUser(userObj!)
+	saveSession(token, user)
+	return user
+}
+
+export async function registerByPassword(username: string, password: string, confirm: string): Promise<HgUser> {
+	const body = JSON.stringify({
+		username: username,
+		password: password,
+		confirm_password: confirm
+	})
+	const res = await userPost('/api/account/registerByPassword', body)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('register empty')
+	}
+	const token = data!.getString('token') ?? ''
+	const userObj = data!.getJSON('user')
+	if (token.length == 0 || userObj == null) {
+		throw new Error('register token empty')
+	}
+	const user = parseUser(userObj!)
+	saveSession(token, user)
+	return user
+}
+
+export async function fetchMe(): Promise<HgUser> {
+	if (getToken().length == 0) {
+		throw new Error('未登录')
+	}
+	const res = await userGet('/api/account/me')
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('me empty')
+	}
+	const user = parseUser(data!)
+	updateUser(user)
+	return user
+}
+
+export async function logout(): Promise<void> {
+	try {
+		if (getToken().length > 0) {
+			await userPost('/api/account/logout', '{}')
+		}
+	} catch (_) { }
+	clearSession()
+}
+
+export async function updateProfile(nickname: string, sign: string, desc: string): Promise<HgUser> {
+	const body = JSON.stringify({ nickname: nickname, sign: sign, desc: desc })
+	const res = await userPatch('/api/account/profile', body)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('profile empty')
+	}
+	const user = parseUser(data!)
+	updateUser(user)
+	return user
+}
+
+export async function changePassword(oldPwd: string, newPwd: string, confirm: string): Promise<void> {
+	const body = JSON.stringify({
+		old_password: oldPwd,
+		new_password: newPwd,
+		confirm_password: confirm
+	})
+	const res = await userPost('/api/account/password', body)
+	const data = res.getJSON('data')
+	if (data != null) {
+		const token = data!.getString('token')
+		if (token != null && token!.length > 0) {
+			const me = await fetchMe()
+			saveSession(token!, me)
+		}
+	}
+}

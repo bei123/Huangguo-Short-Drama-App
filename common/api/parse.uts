@@ -1,0 +1,348 @@
+import { resolveCoverUrl } from '../http/config.uts'
+import {
+	VideoCard,
+	HomeBanner,
+	CateRec,
+	HomeData,
+	TopicLite,
+	CategoryItem,
+	RankItem,
+	EpisodeItem,
+	VideoDetail,
+	PlaybackInfo,
+	PageResult
+} from '../models/video.uts'
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	if (v != null) {
+		return (v as string).trim()
+	}
+	const anyVal = obj.getAny(key)
+	if (anyVal != null) {
+		return ('' + anyVal).trim()
+	}
+	return fallback
+}
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	if (n != null) {
+		return n as number
+	}
+	const s = obj.getString(key)
+	if (s != null && s!.length > 0) {
+		const parsed = parseFloat(s!)
+		if (!isNaN(parsed)) {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+function readBool(obj: UTSJSONObject, key: string, fallback: boolean = false): boolean {
+	const b = obj.getBoolean(key)
+	if (b != null) {
+		return b as boolean
+	}
+	return fallback
+}
+
+function readTags(obj: UTSJSONObject): string[] {
+	const arr = obj.getArray('tags')
+	const out: string[] = []
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	const limit = Math.min(list.length, 20)
+	for (let i = 0; i < limit; i++) {
+		out.push(('' + list[i]).trim())
+	}
+	return out
+}
+
+function readBadge(obj: UTSJSONObject): string {
+	const badge = readStr(obj, 'badge', '')
+	if (badge.length > 0) {
+		return badge.length > 8 ? badge.substring(0, 8) : badge
+	}
+	if (readBool(obj, 'is_hot', false)) {
+		return '热播'
+	}
+	return ''
+}
+
+export function parseVideoCard(obj: UTSJSONObject): VideoCard {
+	const idNum = readNum(obj, 'id', 0)
+	const coverRaw = readStr(obj, 'cover', '')
+	const imageRaw = coverRaw.length > 0 ? coverRaw : readStr(obj, 'image', '')
+	let desc = readStr(obj, 'desc', '')
+	if (desc.length == 0) {
+		desc = readStr(obj, 'description', '')
+	}
+	return {
+		id: '' + (idNum > 0 ? idNum : readStr(obj, 'id', '0')),
+		title: readStr(obj, 'title', '未命名'),
+		cover: resolveCoverUrl(imageRaw),
+		score: readNum(obj, 'score', 0),
+		hot: readNum(obj, 'hot', 0),
+		episodeCount: readNum(obj, 'episode_count', 0) as number,
+		isFinished: readBool(obj, 'is_finished', false),
+		tags: readTags(obj),
+		desc: desc,
+		badge: readBadge(obj),
+		durationSec: readNum(obj, 'duration', 0) as number,
+		cateId: readStr(obj, 'cate_id', '')
+	} as VideoCard
+}
+
+export function parseHome(data: UTSJSONObject): HomeData {
+	const banners: HomeBanner[] = []
+	const featured: VideoCard[] = []
+	const latest: VideoCard[] = []
+	const cateRec: CateRec[] = []
+	const topicRec: TopicLite[] = []
+
+	const bArr = data.getArray('banners')
+	if (bArr != null) {
+		const list = bArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const item = list[i] as UTSJSONObject
+			banners.push({
+				id: '' + readNum(item, 'id', 0),
+				videoId: '' + readNum(item, 'video_id', 0),
+				title: readStr(item, 'title', ''),
+				image: resolveCoverUrl(readStr(item, 'image', '')),
+				score: readNum(item, 'score', 0),
+				desc: readStr(item, 'desc', '')
+			} as HomeBanner)
+		}
+	}
+
+	const fArr = data.getArray('featured')
+	if (fArr != null) {
+		const list = fArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			featured.push(parseVideoCard(list[i] as UTSJSONObject))
+		}
+	}
+
+	const lArr = data.getArray('latest')
+	if (lArr != null) {
+		const list = lArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			latest.push(parseVideoCard(list[i] as UTSJSONObject))
+		}
+	}
+
+	const cArr = data.getArray('cate_rec')
+	if (cArr != null) {
+		const list = cArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const cate = list[i] as UTSJSONObject
+			const videos: VideoCard[] = []
+			const vArr = cate.getArray('videos')
+			if (vArr != null) {
+				const vl = vArr as Array<any>
+				for (let j = 0; j < vl.length; j++) {
+					videos.push(parseVideoCard(vl[j] as UTSJSONObject))
+				}
+			}
+			cateRec.push({
+				cateId: '' + readNum(cate, 'cate_id', 0),
+				cateName: readStr(cate, 'cate_name', ''),
+				videos: videos
+			} as CateRec)
+		}
+	}
+
+	const tArr = data.getArray('topic_rec')
+	if (tArr != null) {
+		const list = tArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const t = list[i] as UTSJSONObject
+			topicRec.push({
+				id: '' + readNum(t, 'id', 0),
+				title: readStr(t, 'title', ''),
+				slug: readStr(t, 'slug', ''),
+				cover: resolveCoverUrl(readStr(t, 'cover', '')),
+				intro: readStr(t, 'intro', ''),
+				videoCount: readNum(t, 'video_count', 0) as number
+			} as TopicLite)
+		}
+	}
+
+	return {
+		banners: banners,
+		featured: featured,
+		latest: latest,
+		cateRec: cateRec,
+		topicRec: topicRec
+	} as HomeData
+}
+
+export function parseCardPage(data: UTSJSONObject): PageResult<VideoCard> {
+	const items: VideoCard[] = []
+	const arr = data.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			items.push(parseVideoCard(list[i] as UTSJSONObject))
+		}
+	}
+	let page = readNum(data, 'page', 1) as number
+	let pages = readNum(data, 'pages', 1) as number
+	let total = readNum(data, 'total', items.length) as number
+	const pagination = data.getJSON('pagination')
+	if (pagination != null) {
+		page = readNum(pagination!, 'page', page) as number
+		pages = readNum(pagination!, 'pages', pages) as number
+		total = readNum(pagination!, 'total', total) as number
+	}
+	return {
+		items: items,
+		page: page,
+		pages: pages,
+		total: total
+	} as PageResult<VideoCard>
+}
+
+export function parseCategories(data: UTSJSONObject): CategoryItem[] {
+	const out: CategoryItem[] = []
+	const arr = data.getArray('items')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const item = list[i] as UTSJSONObject
+		out.push({
+			id: '' + readNum(item, 'id', 0),
+			name: readStr(item, 'name', ''),
+			route: readStr(item, 'route', '')
+		} as CategoryItem)
+	}
+	return out
+}
+
+export function parseRanks(data: UTSJSONObject): RankItem[] {
+	const out: RankItem[] = []
+	const arr = data.getArray('items')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const item = list[i] as UTSJSONObject
+		out.push({
+			rank: readNum(item, 'rank', i + 1) as number,
+			videoId: '' + readNum(item, 'video_id', 0),
+			title: readStr(item, 'title', ''),
+			cover: resolveCoverUrl(readStr(item, 'cover', '')),
+			cateName: readStr(item, 'cate_name', ''),
+			episodeCount: readNum(item, 'episode_count', 0) as number,
+			isFinished: readBool(item, 'is_finished', false),
+			score: readNum(item, 'score', 0),
+			tags: readTags(item),
+			metricLabel: readStr(item, 'metric_label', ''),
+			metricValue: readNum(item, 'metric_value', 0) as number
+		} as RankItem)
+	}
+	return out
+}
+
+export function parseDetail(data: UTSJSONObject): VideoDetail {
+	const episodes: EpisodeItem[] = []
+	const eArr = data.getArray('episodes')
+	if (eArr != null) {
+		const list = eArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const ep = list[i] as UTSJSONObject
+			const status = readNum(ep, 'status', 1)
+			episodes.push({
+				epNum: readNum(ep, 'ep_num', i + 1) as number,
+				title: readStr(ep, 'title', '第' + (i + 1) + '集'),
+				durationSec: readNum(ep, 'duration', 0) as number,
+				locked: status != 1
+			} as EpisodeItem)
+		}
+	}
+	if (episodes.length == 0) {
+		episodes.push({
+			epNum: 1,
+			title: '第1集',
+			durationSec: 0,
+			locked: false
+		} as EpisodeItem)
+	}
+
+	let authorId = 0
+	let authorName = ''
+	const author = data.getJSON('author')
+	if (author != null) {
+		authorId = readNum(author!, 'id', 0) as number
+		authorName = readStr(author!, 'name', readStr(author!, 'nickname', ''))
+	}
+
+	let hot = 0
+	let like = 0
+	let collect = 0
+	const counts = data.getJSON('counts')
+	if (counts != null) {
+		hot = readNum(counts!, 'hot', 0)
+		like = readNum(counts!, 'like', 0)
+		collect = readNum(counts!, 'collect', 0)
+	}
+
+	return {
+		id: '' + readNum(data, 'id', 0),
+		title: readStr(data, 'title', '未命名'),
+		description: readStr(data, 'description', ''),
+		cover: resolveCoverUrl(readStr(data, 'cover', '')),
+		score: readNum(data, 'score', 0),
+		episodeCount: readNum(data, 'episode_count', episodes.length) as number,
+		isFinished: readBool(data, 'is_finished', false),
+		tags: readTags(data),
+		hot: hot,
+		like: like,
+		collect: collect,
+		authorId: authorId,
+		authorName: authorName,
+		episodes: episodes
+	} as VideoDetail
+}
+
+export function parsePlayback(data: UTSJSONObject): PlaybackInfo {
+	const streams = data.getJSON('streams')
+	let url = ''
+	if (streams != null) {
+		url = readStr(streams!, 'main', '')
+	}
+	const ts = readNum(data, 'timestamp', 0)
+	return {
+		url: url,
+		expiresAt: (ts as number) * 1000
+	} as PlaybackInfo
+}
+
+export function parseHotWords(data: UTSJSONObject): string[] {
+	const out: string[] = []
+	const arr = data.getArray('items')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const item = list[i] as UTSJSONObject
+		const word = readStr(item, 'word', '')
+		if (word.length > 0) {
+			out.push(word)
+		}
+	}
+	return out
+}
+
+export function parseSearchPage(data: UTSJSONObject): PageResult<VideoCard> {
+	return parseCardPage(data)
+}

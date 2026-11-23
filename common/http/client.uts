@@ -1,0 +1,134 @@
+import { edgeRequest } from '@/uni_modules/hg-edge'
+import { HG_BASE_URL } from './config.uts'
+import { clearSession, getToken } from '../auth/session.uts'
+
+export class ApiError extends Error {
+	status: number
+	constructor(status: number, message: string) {
+		super(message)
+		this.status = status
+	}
+}
+
+function asObj(v: any | null): UTSJSONObject | null {
+	if (v == null) {
+		return null
+	}
+	if (v instanceof UTSJSONObject) {
+		return v as UTSJSONObject
+	}
+	try {
+		return JSON.parse(JSON.stringify(v)) as UTSJSONObject
+	} catch (_) {
+		return null
+	}
+}
+
+export async function publicGet(path: string): Promise<UTSJSONObject> {
+	const url = HG_BASE_URL + path
+	try {
+		const plain = await plainGet(url)
+		return assertBiz(plain)
+	} catch (e) {
+		console.log('[http] plain fail, fallback edge: ' + e)
+		return await edgeCall('public', 'GET', path, '')
+	}
+}
+
+export async function dynamicGet(path: string): Promise<UTSJSONObject> {
+	return await edgeCall('dynamic', 'GET', path, '')
+}
+
+export async function dynamicPost(path: string, bodyJson: string): Promise<UTSJSONObject> {
+	return await edgeCall('dynamic', 'POST', path, bodyJson)
+}
+
+export async function playbackPost(path: string, bodyJson: string): Promise<UTSJSONObject> {
+	return await edgeCall('playback', 'POST', path, bodyJson)
+}
+
+export async function userGet(path: string): Promise<UTSJSONObject> {
+	return await edgeCall('user', 'GET', path, '')
+}
+
+/** 返回明文原文（HTML 页面等非 JSON 响应） */
+export async function userGetText(path: string): Promise<string> {
+	const token = getToken()
+	if (token.length == 0) {
+		throw new ApiError(401, '未登录')
+	}
+	return await edgeRequest('user', 'GET', path, '', token)
+}
+
+export async function userPost(path: string, bodyJson: string): Promise<UTSJSONObject> {
+	return await edgeCall('user', 'POST', path, bodyJson)
+}
+
+export async function userDelete(path: string): Promise<UTSJSONObject> {
+	return await edgeCall('user', 'DELETE', path, '')
+}
+
+export async function userPatch(path: string, bodyJson: string): Promise<UTSJSONObject> {
+	return await edgeCall('user', 'PATCH', path, bodyJson)
+}
+
+async function edgeCall(scope: string, method: string, path: string, bodyJson: string): Promise<UTSJSONObject> {
+	const token = scope == 'user' ? getToken() : ''
+	// login/register 可无 token；其余 user 接口必须带 Bearer
+	if (scope == 'user' && token.length == 0) {
+		const isAuthEntry = path.indexOf('/api/account/login') >= 0 || path.indexOf('/api/account/register') >= 0
+		if (!isAuthEntry) {
+			throw new ApiError(401, '未登录')
+		}
+	}
+	const raw = await edgeRequest(scope, method, path, bodyJson, token)
+	return parseBiz(raw)
+}
+
+function parseBiz(raw: string): UTSJSONObject {
+	const obj = JSON.parse(raw) as UTSJSONObject
+	return assertBiz(obj)
+}
+
+function assertBiz(obj: UTSJSONObject): UTSJSONObject {
+	const status = obj.getNumber('status')
+	if (status != null && status != 1) {
+		const msg = obj.getString('msg') ?? '业务失败'
+		const code = (status ?? 0) as number
+		if (code == 401 || msg.indexOf('unauthorized') >= 0 || msg.indexOf('invalid token') >= 0) {
+			clearSession()
+		}
+		throw new ApiError(code, msg)
+	}
+	return obj
+}
+
+function plainGet(url: string): Promise<UTSJSONObject> {
+	return new Promise<UTSJSONObject>((resolve, reject) => {
+		uni.request({
+			url: url,
+			method: 'GET',
+			header: {
+				'Accept': 'application/json',
+				'Referer': 'https://huangguoai.com/'
+			} as UTSJSONObject,
+			timeout: 20000,
+			success: (res) => {
+				const code = res.statusCode ?? 0
+				if (code < 200 || code >= 300) {
+					reject(new Error('http ' + code))
+					return
+				}
+				const obj = asObj(res.data)
+				if (obj == null) {
+					reject(new Error('empty body'))
+					return
+				}
+				resolve(obj)
+			},
+			fail: (err) => {
+				reject(new Error(err.errMsg ?? 'network fail'))
+			}
+		})
+	})
+}

@@ -1,0 +1,108 @@
+import { publicGet, dynamicGet, playbackPost } from '../http/client.uts'
+import {
+	parseHome,
+	parseCardPage,
+	parseCategories,
+	parseRanks,
+	parseDetail,
+	parsePlayback,
+	parseHotWords,
+	parseSearchPage
+} from './parse.uts'
+import {
+	HomeData,
+	VideoCard,
+	CategoryItem,
+	RankItem,
+	VideoDetail,
+	PlaybackInfo,
+	PageResult
+} from '../models/video.uts'
+
+export async function fetchHome(): Promise<HomeData> {
+	const res = await dynamicGet('/api/home')
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('home data empty')
+	}
+	return parseHome(data!)
+}
+
+export async function fetchLatest(page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/home/latest?page=' + page)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('latest empty')
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchCategories(): Promise<CategoryItem[]> {
+	const res = await publicGet('/api/site/categories/video')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return []
+	}
+	return parseCategories(data!)
+}
+
+export async function fetchCategoryVideos(route: string, page: number, size: number = 20): Promise<PageResult<VideoCard>> {
+	const path = '/api/videos/category/' + encodeURIComponent(route) + '?page=' + page + '&size=' + size
+	const res = await publicGet(path)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('category empty')
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchRanks(type: string): Promise<RankItem[]> {
+	const res = await publicGet('/api/ranks/' + encodeURIComponent(type))
+	const data = res.getJSON('data')
+	if (data == null) {
+		return []
+	}
+	return parseRanks(data!)
+}
+
+export async function fetchHotWords(): Promise<string[]> {
+	const res = await publicGet('/api/search/hot')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return []
+	}
+	return parseHotWords(data!)
+}
+
+export async function fetchSearch(q: string, page: number): Promise<PageResult<VideoCard>> {
+	const path = '/api/search?q=' + encodeURIComponent(q) + '&page=' + page
+	const res = await dynamicGet(path)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('search empty')
+	}
+	return parseSearchPage(data!)
+}
+
+export async function fetchVideoDetail(id: string): Promise<VideoDetail> {
+	const res = await dynamicGet('/api/videos/' + encodeURIComponent(id))
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('detail empty')
+	}
+	return parseDetail(data!)
+}
+
+export async function fetchPlayback(videoId: string, ep: number): Promise<PlaybackInfo> {
+	const path = '/api/videos/' + encodeURIComponent(videoId) + '/episodes/' + ep + '/playback'
+	const res = await playbackPost(path, '{}')
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('playback empty')
+	}
+	const info = parsePlayback(data!)
+	if (info.url.length == 0) {
+		throw new Error('playback url empty')
+	}
+	return info
+}

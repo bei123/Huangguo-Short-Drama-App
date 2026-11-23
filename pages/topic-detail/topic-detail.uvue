@@ -1,0 +1,111 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical" @scrolltolower="loadMore">
+	<!-- #endif -->
+		<view class="page-inner">
+			<view v-if="loading && videos.length == 0" class="state-box">
+				<text class="state-text">加载中…</text>
+			</view>
+			<template v-else>
+				<text class="intro">{{intro}}</text>
+				<view class="grid">
+					<view v-for="item in videos" :key="item.id" class="grid-card">
+						<hg-video-card
+							:id="item.id"
+							:title="item.title"
+							:cover="item.cover"
+							:score="item.score"
+							:badge="item.badge"
+							:sub="item.episodeCount + '集'"
+							:cover-w="110"
+							:cover-h="150"
+						></hg-video-card>
+					</view>
+				</view>
+				<text v-if="related.length > 0" class="section-title">相关专题</text>
+				<scroll-view v-if="related.length > 0" class="rel-row" direction="horizontal" :show-scrollbar="false">
+					<view v-for="r in related" :key="r.id" class="rel-item" @click="openRelated(r.slug, r.title)">
+						<hg-cover :src="r.cover" :width="140" :height="80" :radius="8"></hg-cover>
+						<text class="rel-title">{{r.title}}</text>
+					</view>
+				</scroll-view>
+			</template>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchTopicDetail } from '../../common/api/topics.uts'
+	import { TopicItem } from '../../common/models/extra.uts'
+	import { VideoCard } from '../../common/models/video.uts'
+
+	const slug = ref('')
+	const intro = ref('')
+	const loading = ref(true)
+	const videos = ref<VideoCard[]>([] as VideoCard[])
+	const related = ref<TopicItem[]>([] as TopicItem[])
+	const page = ref(1)
+	const pages = ref(1)
+
+	async function reload() {
+		loading.value = true
+		try {
+			const d = await fetchTopicDetail(slug.value, 1)
+			intro.value = d.topic.intro
+			videos.value = d.videos
+			related.value = d.related
+			page.value = d.page
+			pages.value = d.pages
+			uni.setNavigationBarTitle({ title: d.topic.title })
+		} catch (e) {
+			console.log('[topic] ' + e)
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function loadMore() {
+		if (page.value >= pages.value) {
+			return
+		}
+		try {
+			const d = await fetchTopicDetail(slug.value, page.value + 1)
+			const merged = videos.value.slice(0)
+			for (let i = 0; i < d.videos.length; i++) {
+				merged.push(d.videos[i])
+			}
+			videos.value = merged
+			page.value = d.page
+			pages.value = d.pages
+		} catch (_) { }
+	}
+
+	function openRelated(s: string, title: string) {
+		uni.redirectTo({
+			url: '/pages/topic-detail/topic-detail?slug=' + encodeURIComponent(s) + '&title=' + encodeURIComponent(title)
+		})
+	}
+
+	onLoad((options) => {
+		slug.value = options['slug'] ?? ''
+		const title = options['title'] ?? '专题'
+		uni.setNavigationBarTitle({ title: title })
+		reload()
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.page-inner { padding: 12px 10px 24px 10px; }
+	.state-box { padding-top: 80px; align-items: center; }
+	.state-text { color: #9aa0aa; font-size: 14px; }
+	.intro { color: #b0b4bc; font-size: 13px; margin: 0 4px 14px 4px; }
+	.grid { flex-direction: row; flex-wrap: wrap; }
+	.grid-card { width: 33%; align-items: center; margin-bottom: 12px; }
+	.section-title { color: #f2f2f2; font-size: 16px; font-weight: bold; margin: 10px 4px; }
+	.rel-row { height: 120px; flex-direction: row; }
+	.rel-item { width: 140px; margin-right: 10px; }
+	.rel-title { margin-top: 4px; color: #d0d3d9; font-size: 12px; text-overflow: ellipsis; }
+</style>

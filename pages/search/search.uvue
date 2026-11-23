@@ -1,0 +1,321 @@
+<template>
+	<view class="page">
+		<view class="search-bar">
+			<view class="search-box">
+				<input
+					class="search-input"
+					type="text"
+					:value="keyword"
+					placeholder="搜索短剧 / 演员 / 标签"
+					placeholder-style="color:#6F737A"
+					confirm-type="search"
+					@input="onInput"
+					@confirm="doSearch"
+				/>
+			</view>
+			<view class="search-btn" @click="doSearch">
+				<text class="search-btn-text">搜索</text>
+			</view>
+		</view>
+
+		<!-- #ifdef APP -->
+		<scroll-view class="body" direction="vertical" @scrolltolower="loadMore">
+		<!-- #endif -->
+			<view class="body-inner" :style="bodyPadStyle">
+				<template v-if="!searched">
+					<text class="group-title">热搜</text>
+					<view class="hot-wrap">
+						<text v-for="(w, i) in hotWords" :key="i" class="hot-chip hot-chip-accent" @click="searchWord(w)">{{w}}</text>
+					</view>
+					<text v-if="hotTags.length > 0" class="group-title">热门标签</text>
+					<view v-if="hotTags.length > 0" class="hot-wrap">
+						<text v-for="(t, i) in hotTags" :key="'t' + i" class="hot-chip" @click="openTag(t.word)">{{t.word}}</text>
+					</view>
+					<text v-if="suggestWords.length > 0" class="group-title group-title-sub">联想</text>
+					<view v-if="suggestWords.length > 0" class="hot-wrap">
+						<text v-for="(w, i) in suggestWords" :key="'s' + i" class="hot-chip hot-chip-ghost" @click="searchWord(w)">{{w}}</text>
+					</view>
+					<view v-if="suggestVideos.length > 0" class="suggest-list">
+						<text class="group-title">相关作品</text>
+						<view v-for="item in suggestVideos" :key="item.id" class="result-item" hover-class="result-hover" @click="openVideo(item.id)">
+							<hg-cover :src="item.cover" :width="64" :height="86" :radius="8"></hg-cover>
+							<view class="result-meta">
+								<text class="result-title" max-lines="2">{{item.title}}</text>
+								<text class="result-sub">评分 {{item.score > 0 ? item.score.toFixed(1) : '-'}}</text>
+							</view>
+						</view>
+					</view>
+				</template>
+				<template v-else>
+					<view v-if="loading && items.length == 0" class="state-box">
+						<text class="state-text">搜索中…</text>
+					</view>
+					<view v-else-if="errorText.length > 0 && items.length == 0" class="state-box">
+						<text class="state-text">{{errorText}}</text>
+					</view>
+					<hg-empty
+						v-else-if="items.length == 0"
+						mark="搜"
+						title="没有找到相关作品"
+						desc="换个关键词，或看看热搜"
+						action="清除重试"
+						@action="clearSearch"
+					></hg-empty>
+					<view v-else class="result-list">
+						<view v-for="item in items" :key="item.id" class="result-item" @click="openVideo(item.id)">
+							<hg-cover :src="item.cover" :width="84" :height="112" :radius="8"></hg-cover>
+							<view class="result-meta">
+								<text class="result-title" max-lines="2">{{item.title}}</text>
+								<text class="result-sub">评分 {{item.score > 0 ? item.score.toFixed(1) : '-'}} · {{item.episodeCount}}集</text>
+								<text class="result-desc" max-lines="2">{{item.desc}}</text>
+							</view>
+						</view>
+						<text v-if="loadingMore" class="footer-tip">加载更多…</text>
+						<text v-else-if="!hasMore && items.length > 0" class="footer-tip">没有更多了</text>
+					</view>
+				</template>
+			</view>
+		<!-- #ifdef APP -->
+		</scroll-view>
+		<!-- #endif -->
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { fetchHotWords, fetchSearch } from '../../common/api/huangguo.uts'
+	import { fetchHotTags, fetchSuggest } from '../../common/api/content.uts'
+	import { VideoCard } from '../../common/models/video.uts'
+	import { TagHot } from '../../common/models/extra.uts'
+	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
+	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+
+	const bodyPadStyle = 'padding: 4px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+
+	const keyword = ref('')
+	const hotWords = ref<string[]>([] as string[])
+	const hotTags = ref<TagHot[]>([] as TagHot[])
+	const suggestWords = ref<string[]>([] as string[])
+	const suggestVideos = ref<VideoCard[]>([] as VideoCard[])
+	const items = ref<VideoCard[]>([] as VideoCard[])
+	const searched = ref(false)
+	const loading = ref(false)
+	const loadingMore = ref(false)
+	const errorText = ref('')
+	const page = ref(1)
+	const pages = ref(1)
+	const suggestSeq = ref(0)
+
+	const hasMore = computed((): boolean => {
+		return page.value < pages.value
+	})
+
+	function onInput(e: UniInputEvent) {
+		keyword.value = e.detail.value
+		searched.value = false
+		const q = keyword.value.trim()
+		if (q.length < 1) {
+			suggestWords.value = [] as string[]
+			suggestVideos.value = [] as VideoCard[]
+			return
+		}
+		suggestSeq.value = suggestSeq.value + 1
+		const seq = suggestSeq.value
+		setTimeout(() => {
+			if (seq != suggestSeq.value) {
+				return
+			}
+			fetchSuggest(q).then((res) => {
+				if (seq != suggestSeq.value) {
+					return
+				}
+				suggestWords.value = res.words
+				suggestVideos.value = res.content
+			}).catch((_) => { })
+		}, 350)
+	}
+
+	function clearSearch() {
+		searched.value = false
+		items.value = [] as VideoCard[]
+		errorText.value = ''
+	}
+
+	function searchWord(w: string) {
+		keyword.value = w
+		doSearch()
+	}
+
+	function openTag(tag: string) {
+		uni.navigateTo({
+			url: '/pages/list/list?mode=tag&route=' + encodeURIComponent(tag) + '&title=' + encodeURIComponent(tag)
+		})
+	}
+
+	function openVideo(id: string) {
+		uni.navigateTo({
+			url: '/pages/detail/detail?id=' + encodeURIComponent(id)
+		})
+	}
+
+	async function doSearch() {
+		const q = keyword.value.trim()
+		if (q.length == 0) {
+			uni.showToast({ title: '请输入关键词', icon: 'none' })
+			return
+		}
+		searched.value = true
+		loading.value = true
+		errorText.value = ''
+		page.value = 1
+		items.value = [] as VideoCard[]
+		try {
+			const res = await fetchSearch(q, 1)
+			items.value = res.items
+			page.value = res.page
+			pages.value = res.pages
+		} catch (e) {
+			errorText.value = '搜索失败，请稍后再试'
+			console.log('[search] fail ' + e)
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function loadMore() {
+		if (!searched.value || !hasMore.value || loadingMore.value || loading.value) {
+			return
+		}
+		loadingMore.value = true
+		try {
+			const next = page.value + 1
+			const res = await fetchSearch(keyword.value.trim(), next)
+			const merged = items.value.slice(0)
+			for (let i = 0; i < res.items.length; i++) {
+				merged.push(res.items[i])
+			}
+			items.value = merged
+			page.value = res.page
+			pages.value = res.pages
+		} catch (e) {
+			console.log('[search] more fail ' + e)
+		} finally {
+			loadingMore.value = false
+		}
+	}
+
+	onLoad(() => {
+		fetchHotWords().then((list) => {
+			hotWords.value = list
+		}).catch((e) => {
+			console.log('[search] hot fail ' + e)
+		})
+		fetchHotTags().then((list) => {
+			hotTags.value = list
+		}).catch((_) => { })
+	})
+
+	onShow(() => {
+		try {
+			installLiquidTabBar()
+			syncLiquidTabIndex('/pages/search/search')
+		} catch (_) { }
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.search-bar {
+		flex-direction: row;
+		align-items: center;
+		padding: 12px 16px;
+		background-color: #12141a;
+	}
+	.search-box {
+		flex: 1;
+		height: 40px;
+		justify-content: center;
+		padding-left: 14px;
+		padding-right: 14px;
+		background-color: #181B22;
+		border-radius: 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.search-input {
+		height: 40px;
+		color: #F2F3F5;
+		font-size: 14px;
+	}
+	.search-btn {
+		margin-left: 12px;
+		height: 40px;
+		padding-left: 16px;
+		padding-right: 16px;
+		align-items: center;
+		justify-content: center;
+		background-color: #E8C27A;
+		border-radius: 10px;
+	}
+	.search-btn-text {
+		color: #1A1208;
+		font-size: 14px;
+		font-weight: bold;
+	}
+	.body { flex: 1; }
+	.body-inner { padding: 4px 16px 20px 16px; }
+	.group-title {
+		color: #F2F3F5;
+		font-size: 16px;
+		font-weight: bold;
+		margin-bottom: 12px;
+		margin-top: 14px;
+	}
+	.group-title-sub {
+		color: #8A8E96;
+		font-size: 14px;
+		font-weight: bold;
+	}
+	.hot-wrap { flex-direction: row; flex-wrap: wrap; }
+	.hot-chip {
+		background-color: #1A1D26;
+		color: #C8CCD3;
+		font-size: 13px;
+		padding: 8px 14px;
+		border-radius: 8px;
+		margin-right: 8px;
+		margin-bottom: 8px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.hot-chip-accent {
+		color: #E8C27A;
+		border-color: #3A3428;
+		background-color: #2A261C;
+	}
+	.hot-chip-ghost {
+		color: #8A8E96;
+		background-color: transparent;
+		border-color: #2A2E38;
+	}
+	.result-hover {
+		background-color: #22262F;
+	}
+	.state-box { padding-top: 72px; align-items: center; }
+	.state-text { color: #8A8E96; font-size: 14px; }
+	.state-action { margin-top: 12px; color: #E8C27A; font-size: 13px; }
+	.result-item {
+		flex-direction: row;
+		margin-bottom: 16px;
+		padding: 10px;
+		background-color: #1A1D26;
+		border-radius: 12px;
+	}
+	.result-meta { flex: 1; margin-left: 12px; justify-content: center; }
+	.result-title { color: #F2F3F5; font-size: 15px; font-weight: bold; text-overflow: ellipsis; }
+	.result-sub { margin-top: 6px; color: #8A8E96; font-size: 12px; }
+	.result-desc { margin-top: 6px; color: #6F737A; font-size: 12px; text-overflow: ellipsis; }
+	.footer-tip { text-align: center; color: #6F737A; font-size: 12px; padding: 12px; }
+	.suggest-list { margin-top: 4px; }
+</style>

@@ -1,0 +1,139 @@
+import { decryptImage } from '@/uni_modules/hg-edge'
+import { HG_REFERER, resolveCoverUrl } from '../http/config.uts'
+
+let coverSeq = 0
+const memCache = new Map<string, string>()
+const inflight = new Map<string, Promise<string> | null>()
+
+/**
+ * 下载 CDN 加密封面 → AES-CBC 智能解密 → 写入 USER_DATA_PATH
+ * 用 request+arraybuffer，避免 downloadFile 临时文件 ENOENT
+ */
+export function loadDecryptedCover(rawUrl: string): Promise<string> {
+	const url = resolveCoverUrl(rawUrl)
+	if (url.length == 0) {
+		return Promise.reject(new Error('empty cover url'))
+	}
+	const cached = memCache.get(url)
+	if (cached != null && cached!.length > 0) {
+		return Promise.resolve(cached!)
+	}
+	const pending = inflight.get(url)
+	if (pending != null) {
+		return pending!
+	}
+	const job = fetchThenDecrypt(url).then((path: string): string => {
+		memCache.set(url, path)
+		inflight.set(url, null)
+		return path
+	}).catch((e: any): string => {
+		inflight.set(url, null)
+		throw e
+	})
+	inflight.set(url, job)
+	return job
+}
+
+function fetchThenDecrypt(url: string): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		uni.request({
+			url: url,
+			method: 'GET',
+			responseType: 'arraybuffer',
+			header: {
+				'Referer': HG_REFERER,
+				'User-Agent': 'HuangguoAndroid/1.0',
+				'Accept': '*/*'
+			} as UTSJSONObject,
+			timeout: 25000,
+			success: (res) => {
+				const statusCode = res.statusCode ?? 0
+				if (statusCode < 200 || statusCode >= 300) {
+					reject(new Error('cover http ' + statusCode))
+					return
+				}
+				try {
+					const buf = res.data as ArrayBuffer
+					if (buf == null || buf.byteLength < 16) {
+						reject(new Error('cover empty body'))
+						return
+					}
+					const rawB64 = uni.arrayBufferToBase64(buf)
+					const plainB64 = toPlainImageB64(rawB64)
+					coverSeq++
+					const ext = guessExtFromB64(plainB64)
+					const outPath = buildCoverPath(coverSeq, ext)
+					const fs = uni.getFileSystemManager()
+					const dir = coverDir()
+					try {
+						fs.accessSync(dir)
+					} catch (_) {
+						try {
+							fs.mkdirSync(dir, true)
+						} catch (mkErr) {
+							console.log('[cover] mkdir ' + mkErr)
+						}
+					}
+					fs.writeFileSync(outPath, plainB64, 'base64')
+					resolve(outPath)
+				} catch (e) {
+					reject(e as Error)
+				}
+			},
+			fail: (err) => {
+				reject(new Error(err.errMsg ?? 'cover download fail'))
+			}
+		})
+	})
+}
+
+function coverDir(): string {
+	return uni.env.USER_DATA_PATH + '/hg_covers'
+}
+
+function buildCoverPath(seq: number, ext: string): string {
+	return coverDir() + '/c_' + Date.now().toString() + '_' + seq.toString() + ext
+}
+
+function toPlainImageB64(rawB64: string): string {
+	if (isPlainImageB64(rawB64)) {
+		return rawB64
+	}
+	const plainB64 = decryptImage(rawB64)
+	if (!isPlainImageB64(plainB64)) {
+		throw new Error('decrypt not image')
+	}
+	return plainB64
+}
+
+function isPlainImageB64(b64: string): boolean {
+	if (b64.indexOf('/9j') == 0) {
+		return true
+	}
+	if (b64.indexOf('iVBOR') == 0) {
+		return true
+	}
+	if (b64.indexOf('R0lGOD') == 0) {
+		return true
+	}
+	if (b64.indexOf('UklGR') == 0) {
+		return true
+	}
+	return false
+}
+
+function guessExtFromB64(b64: string): string {
+	if (b64.indexOf('/9j') == 0) {
+		return '.jpg'
+	}
+	if (b64.indexOf('iVBOR') == 0) {
+		return '.png'
+	}
+	if (b64.indexOf('UklGR') == 0) {
+		return '.webp'
+	}
+	if (b64.indexOf('R0lGOD') == 0) {
+		return '.gif'
+	}
+	return '.jpg'
+}

@@ -1,0 +1,102 @@
+export type VideoCard = {
+	id: string
+	title: string
+	cover: string
+	score: number
+	hot: number
+	episodeCount: number
+	isFinished: boolean
+	tags: string[]
+	desc: string
+	badge: string
+	durationSec: number
+	cateId: string
+}
+
+export type HomeBanner = {
+	id: string
+	videoId: string
+	title: string
+	image: string
+	score: number
+	desc: string
+}
+
+export type CateRec = {
+	cateId: string
+	cateName: string
+	videos: VideoCard[]
+}
+
+export type HomeData = {
+	banners: HomeBanner[]
+	featured: VideoCard[]
+	latest: VideoCard[]
+	cateRec: CateRec[]
+	topicRec: TopicLite[]
+}
+
+export type TopicLite = {
+	id: string
+	title: string
+	slug: string
+	cover: string
+	intro: string
+	videoCount: number
+}
+
+export type CategoryItem = {
+	id: string
+	name: string
+	route: string
+}
+
+export type RankItem = {
+	rank: number
+	videoId: string
+	title: string
+	cover: string
+	cateName: string
+	episodeCount: number
+	isFinished: boolean
+	score: number
+	tags: string[]
+	metricLabel: string
+	metricValue: number
+}
+
+export type EpisodeItem = {
+	epNum: number
+	title: string
+	durationSec: number
+	locked: boolean
+}
+
+export type VideoDetail = {
+	id: string
+	title: string
+	description: string
+	cover: string
+	score: number
+	episodeCount: number
+	isFinished: boolean
+	tags: string[]
+	hot: number
+	like: number
+	collect: number
+	authorId: number
+	authorName: string
+	episodes: EpisodeItem[]
+}
+
+export type PlaybackInfo = {
+	url: string
+	expiresAt: number
+}
+
+export type PageResult<T> = {
+	items: T[]
+	page: number
+	pages: number
+	total: number
+}

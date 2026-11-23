@@ -1,0 +1,348 @@
+<template>
+	<view class="page">
+		<view v-if="type == 'history'" class="tabs">
+			<text class="tab" :class="histTab == 'all' ? 'tab-on' : ''" @click="switchHist('all')">全部</text>
+			<text class="tab" :class="histTab == 'chigua' ? 'tab-on' : ''" @click="switchHist('chigua')">吃瓜</text>
+			<text class="tab" :class="histTab == 'manju' ? 'tab-on' : ''" @click="switchHist('manju')">漫剧</text>
+		</view>
+		<view v-if="type == 'history'" class="tab-line"></view>
+		<!-- #ifdef APP -->
+		<scroll-view class="body" direction="vertical" @scrolltolower="loadMore">
+		<!-- #endif -->
+			<view class="page-inner">
+				<view v-if="loading && rows.length == 0" class="state-box">
+					<text class="state-text">加载中…</text>
+				</view>
+				<view v-else-if="errorText.length > 0 && rows.length == 0" class="state-box" @click="reload">
+					<text class="state-text">{{errorText}}</text>
+				</view>
+				<hg-empty v-else-if="rows.length == 0" mark="空" :title="emptyHint"></hg-empty>
+				<template v-else>
+					<view v-for="row in rows" :key="row.key" class="row" @click="openRow(row)">
+						<hg-cover v-if="row.cover.length > 0" :src="row.cover" :width="72" :height="96" :radius="8"></hg-cover>
+						<view v-else class="avatar" :style="{ backgroundColor: row.color }">
+							<text class="avatar-text">{{row.title.substring(0, 1)}}</text>
+						</view>
+						<view class="meta">
+							<text class="title" max-lines="1">{{row.title}}</text>
+							<text class="sub" max-lines="1">{{row.sub}}</text>
+						</view>
+						<text class="row-arrow">›</text>
+					</view>
+					<text v-if="loadingMore" class="footer">加载更多…</text>
+					<text v-else-if="!hasMore && type != 'history'" class="footer">没有更多了</text>
+				</template>
+			</view>
+		<!-- #ifdef APP -->
+		</scroll-view>
+		<!-- #endif -->
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { fetchMyHistory, fetchPostHistoryHtml, fetchMyCollects, fetchMyLikes, fetchMyFollows } from '../../common/api/interact.uts'
+	import { HistoryItem, PostHistoryItem } from '../../common/models/extra.uts'
+
+	type RowItem = {
+		key: string
+		title: string
+		sub: string
+		cover: string
+		color: string
+		videoId: string
+		postId: string
+		userId: number
+		lastEp: number
+	}
+
+	const type = ref('history')
+	const histTab = ref('all')
+	const loading = ref(true)
+	const loadingMore = ref(false)
+	const errorText = ref('')
+	const rows = ref<RowItem[]>([] as RowItem[])
+	const videoHistory = ref<HistoryItem[]>([] as HistoryItem[])
+	const postHistory = ref<PostHistoryItem[]>([] as PostHistoryItem[])
+	const page = ref(1)
+	const pages = ref(1)
+
+	const hasMore = computed((): boolean => {
+		if (type.value == 'history') {
+			return false
+		}
+		return page.value < pages.value
+	})
+
+	const emptyHint = computed((): string => {
+		if (type.value == 'history' && histTab.value == 'chigua') {
+			return '暂无图文历史'
+		}
+		return '暂无内容'
+	})
+
+	function videoToRows(list: HistoryItem[]): RowItem[] {
+		const out: RowItem[] = []
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i]
+			out.push({
+				key: 'v' + it.id,
+				title: it.title,
+				sub: '看到第' + it.lastEp + '集 · ' + it.categoryName,
+				cover: it.cover,
+				color: '#8C8C8C',
+				videoId: it.videoId,
+				postId: '',
+				userId: 0,
+				lastEp: it.lastEp
+			} as RowItem)
+		}
+		return out
+	}
+
+	function postToRows(list: PostHistoryItem[]): RowItem[] {
+		const out: RowItem[] = []
+		for (let i = 0; i < list.length; i++) {
+			const it = list[i]
+			out.push({
+				key: 'p' + it.id,
+				title: it.title,
+				sub: it.sub,
+				cover: it.cover,
+				color: '#6B7C8A',
+				videoId: '',
+				postId: it.postId,
+				userId: 0,
+				lastEp: 0
+			} as RowItem)
+		}
+		return out
+	}
+
+	function filterHistory(): void {
+		const videos = videoHistory.value
+		const posts = postHistory.value
+		if (histTab.value == 'chigua') {
+			// 文档 16.1：吃瓜只来自 HTML
+			rows.value = postToRows(posts)
+			return
+		}
+		const filtered: HistoryItem[] = []
+		for (let i = 0; i < videos.length; i++) {
+			const it = videos[i]
+			if (histTab.value == 'manju') {
+				if (it.cateId == 25 || it.categoryName == '漫剧') {
+					filtered.push(it)
+				}
+			} else {
+				filtered.push(it)
+			}
+		}
+		const out = videoToRows(filtered)
+		// 全部 Tab：视频 JSON + 图文 HTML 合并展示
+		if (histTab.value == 'all') {
+			const postsRows = postToRows(posts)
+			for (let i = 0; i < postsRows.length; i++) {
+				out.push(postsRows[i])
+			}
+		}
+		rows.value = out
+	}
+
+	function switchHist(tab: string) {
+		histTab.value = tab
+		filterHistory()
+	}
+
+	async function loadAllHistory(): Promise<void> {
+		// 文档 16.6 完整路线：JSON 视频 + HTML 图文
+		const first = await fetchMyHistory(1)
+		const merged = first.items.slice(0)
+		let p = first.page
+		let totalPages = first.pages
+		while (p < totalPages && p < 20) {
+			p++
+			const next = await fetchMyHistory(p)
+			for (let i = 0; i < next.items.length; i++) {
+				merged.push(next.items[i])
+			}
+			totalPages = next.pages
+		}
+		videoHistory.value = merged
+
+		try {
+			postHistory.value = await fetchPostHistoryHtml()
+		} catch (e) {
+			console.log('[history] chigua html fail ' + e)
+			postHistory.value = [] as PostHistoryItem[]
+		}
+		filterHistory()
+	}
+
+	async function fetchPage(p: number): Promise<RowItem[]> {
+		const out: RowItem[] = []
+		if (type.value == 'collect') {
+			const res = await fetchMyCollects(p)
+			page.value = res.page
+			pages.value = res.pages
+			for (let i = 0; i < res.items.length; i++) {
+				const it = res.items[i]
+				out.push({
+					key: 'c' + it.id,
+					title: it.title,
+					sub: it.categoryName + ' · 第' + it.lastEp + '集',
+					cover: it.cover,
+					color: '#8C8C8C',
+					videoId: it.videoId,
+					postId: '',
+					userId: 0,
+					lastEp: it.lastEp
+				} as RowItem)
+			}
+			return out
+		}
+		if (type.value == 'like') {
+			const res = await fetchMyLikes(p)
+			page.value = res.page
+			pages.value = res.pages
+			for (let i = 0; i < res.items.length; i++) {
+				const it = res.items[i]
+				out.push({
+					key: 'l' + it.id,
+					title: it.title,
+					sub: it.episodeCount + '集 · 评分 ' + (it.score > 0 ? it.score.toFixed(1) : '-'),
+					cover: it.cover,
+					color: '#8C8C8C',
+					videoId: it.id,
+					postId: '',
+					userId: 0,
+					lastEp: 1
+				} as RowItem)
+			}
+			return out
+		}
+		if (type.value == 'follow') {
+			const res = await fetchMyFollows(p)
+			page.value = res.page
+			pages.value = res.pages
+			for (let i = 0; i < res.items.length; i++) {
+				const it = res.items[i]
+				out.push({
+					key: 'f' + it.id,
+					title: it.nickname,
+					sub: it.sign.length > 0 ? it.sign : '作者',
+					cover: it.avatar,
+					color: it.avatarColor,
+					videoId: '',
+					postId: '',
+					userId: it.id,
+					lastEp: 1
+				} as RowItem)
+			}
+			return out
+		}
+		return out
+	}
+
+	async function reload() {
+		loading.value = true
+		errorText.value = ''
+		rows.value = [] as RowItem[]
+		try {
+			if (type.value == 'history') {
+				await loadAllHistory()
+			} else {
+				rows.value = await fetchPage(1)
+			}
+		} catch (e) {
+			errorText.value = '' + e
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function loadMore() {
+		if (type.value == 'history' || !hasMore.value || loadingMore.value || loading.value) {
+			return
+		}
+		loadingMore.value = true
+		try {
+			const next = await fetchPage(page.value + 1)
+			const merged = rows.value.slice(0)
+			for (let i = 0; i < next.length; i++) {
+				merged.push(next[i])
+			}
+			rows.value = merged
+		} catch (e) {
+			console.log('[my-list] more fail ' + e)
+		} finally {
+			loadingMore.value = false
+		}
+	}
+
+	function openRow(row: RowItem) {
+		if (row.userId > 0) {
+			uni.navigateTo({ url: '/pages/author/author?id=' + row.userId })
+			return
+		}
+		if (row.postId.length > 0) {
+			uni.navigateTo({ url: '/pages/post-detail/post-detail?id=' + encodeURIComponent(row.postId) })
+			return
+		}
+		if (row.videoId.length > 0 && row.videoId != '0') {
+			uni.navigateTo({
+				url: '/pages/detail/detail?id=' + encodeURIComponent(row.videoId) + '&ep=' + row.lastEp
+			})
+		}
+	}
+
+	onLoad((options) => {
+		type.value = options['type'] ?? 'history'
+		let title = '列表'
+		if (type.value == 'collect') {
+			title = '我的收藏'
+		} else if (type.value == 'like') {
+			title = '我的点赞'
+		} else if (type.value == 'follow') {
+			title = '我的关注'
+		} else {
+			title = '观看历史'
+		}
+		uni.setNavigationBarTitle({ title: title })
+		reload()
+	})
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.tabs { flex-direction: row; padding: 12px 16px 0 16px; }
+	.tab {
+		color: #8A8E96; font-size: 14px; margin-right: 20px; padding-bottom: 10px;
+	}
+	.tab-on {
+		color: #E8C27A; font-weight: bold;
+		border-bottom-width: 2px; border-bottom-color: #E8C27A; border-bottom-style: solid;
+	}
+	.tab-line { height: 1px; background-color: #2A2E38; }
+	.body { flex: 1; }
+	.page-inner { padding: 14px 16px 28px 16px; }
+	.state-box { padding-top: 88px; align-items: center; }
+	.state-text {
+		color: #8A8E96; font-size: 14px; text-align: center;
+		padding-left: 24px; padding-right: 24px;
+	}
+	.row {
+		flex-direction: row; align-items: center;
+		margin-bottom: 10px; padding: 10px;
+		background-color: #1A1D26; border-radius: 12px;
+	}
+	.avatar {
+		width: 56px; height: 56px; border-radius: 28px;
+		align-items: center; justify-content: center;
+	}
+	.avatar-text { color: #fff; font-size: 18px; font-weight: bold; }
+	.meta { flex: 1; margin-left: 12px; }
+	.title { color: #F2F3F5; font-size: 15px; font-weight: bold; text-overflow: ellipsis; }
+	.sub { margin-top: 6px; color: #8A8E96; font-size: 12px; text-overflow: ellipsis; }
+	.row-arrow { color: #6F737A; font-size: 18px; margin-left: 6px; }
+	.footer { text-align: center; color: #6F737A; font-size: 12px; padding: 12px; }
+</style>

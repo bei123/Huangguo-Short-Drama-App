@@ -1,0 +1,100 @@
+import { publicGet } from '../http/client.uts'
+import { TopicItem, TopicDetail } from '../models/extra.uts'
+import { PageResult, VideoCard } from '../models/video.uts'
+import { resolveCoverUrl } from '../http/config.uts'
+import { parseVideoCard } from './parse.uts'
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	return n != null ? (n as number) : fallback
+}
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	return v != null ? (v as string).trim() : fallback
+}
+
+export function parseTopicItem(obj: UTSJSONObject): TopicItem {
+	return {
+		id: '' + readNum(obj, 'id', 0),
+		title: readStr(obj, 'title', ''),
+		slug: readStr(obj, 'slug', ''),
+		cover: resolveCoverUrl(readStr(obj, 'cover', '')),
+		intro: readStr(obj, 'intro', ''),
+		videoCount: readNum(obj, 'video_count', 0) as number
+	} as TopicItem
+}
+
+export async function fetchTopics(page: number): Promise<PageResult<TopicItem>> {
+	const res = await publicGet('/api/topics?page=' + page)
+	const data = res.getJSON('data')
+	const items: TopicItem[] = []
+	if (data == null) {
+		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<TopicItem>
+	}
+	const arr = data!.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			items.push(parseTopicItem(list[i] as UTSJSONObject))
+		}
+	}
+	const pag = data!.getJSON('pagination')
+	return {
+		items: items,
+		page: pag != null ? readNum(pag!, 'page', page) as number : page,
+		pages: pag != null ? readNum(pag!, 'pages', 1) as number : 1,
+		total: pag != null ? readNum(pag!, 'total', items.length) as number : items.length
+	} as PageResult<TopicItem>
+}
+
+export async function fetchTopicDetail(slug: string, page: number): Promise<TopicDetail> {
+	const res = await publicGet('/api/topics/' + encodeURIComponent(slug) + '?page=' + page)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('topic empty')
+	}
+	const topicObj = data!.getJSON('topic')
+	const topic = topicObj != null ? parseTopicItem(topicObj!) : ({
+		id: '0', title: '', slug: slug, cover: '', intro: '', videoCount: 0
+	} as TopicItem)
+
+	const videos: VideoCard[] = []
+	let vPage = page
+	let vPages = 1
+	let vTotal = 0
+	const videosWrap = data!.getJSON('videos')
+	if (videosWrap != null) {
+		const arr = videosWrap!.getArray('items')
+		if (arr != null) {
+			const list = arr as Array<any>
+			for (let i = 0; i < list.length; i++) {
+				videos.push(parseVideoCard(list[i] as UTSJSONObject))
+			}
+		}
+		const pag = videosWrap!.getJSON('pagination')
+		if (pag != null) {
+			vPage = readNum(pag!, 'page', page) as number
+			vPages = readNum(pag!, 'pages', 1) as number
+			vTotal = readNum(pag!, 'total', videos.length) as number
+		}
+	}
+
+	const related: TopicItem[] = []
+	const rArr = data!.getArray('related')
+	if (rArr != null) {
+		const list = rArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			related.push(parseTopicItem(list[i] as UTSJSONObject))
+		}
+	}
+
+	return {
+		topic: topic,
+		videos: videos,
+		page: vPage,
+		pages: vPages,
+		total: vTotal,
+		related: related
+	} as TopicDetail
+}

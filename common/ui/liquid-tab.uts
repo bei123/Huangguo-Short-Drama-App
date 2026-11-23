@@ -1,0 +1,81 @@
+import { showLiquidTabBar, hideLiquidTabBar, setLiquidTabIndex } from '@/uni_modules/hg-liquid-glass'
+import { USE_NATIVE_GLASS } from './glass-config.uts'
+
+const TAB_URLS = [
+	'/pages/home/home',
+	'/pages/category/category',
+	'/pages/search/search',
+	'/pages/mine/mine'
+]
+
+let attached = false
+
+export function installLiquidTabBar(): void {
+	// #ifdef APP-ANDROID
+	// 关闭真玻璃时：恢复系统 TabBar，方便标准基座快速联调
+	if (!USE_NATIVE_GLASS) {
+		try {
+			uni.showTabBar({ animation: false })
+		} catch (_) { }
+		try {
+			hideLiquidTabBar()
+		} catch (_) { }
+		attached = false
+		return
+	}
+
+	try {
+		uni.hideTabBar({
+			animation: false
+		})
+	} catch (_) { }
+
+	// 每次都刷新回调，避免首次挂载时 callback 失效后无法恢复
+	showLiquidTabBar((index: number): void => {
+		const i = Math.floor(index)
+		console.log('[liquid-tab] select ' + i)
+		if (i < 0 || i >= TAB_URLS.length) {
+			return
+		}
+		const url = TAB_URLS[i]
+		console.log('[liquid-tab] switchTab ' + url)
+		uni.switchTab({
+			url: url,
+			success: (_) => {
+				console.log('[liquid-tab] switchTab ok')
+			},
+			fail: (err) => {
+				console.log('[liquid-tab] switchTab fail ' + JSON.stringify(err))
+			}
+		})
+	})
+	attached = true
+	// #endif
+}
+
+export function syncLiquidTabIndex(path: string): void {
+	// #ifdef APP-ANDROID
+	if (!attached) {
+		installLiquidTabBar()
+	}
+	let idx = 0
+	for (let i = 0; i < TAB_URLS.length; i++) {
+		if (path.indexOf(TAB_URLS[i]) >= 0) {
+			idx = i
+			break
+		}
+	}
+	try {
+		setLiquidTabIndex(idx)
+	} catch (_) { }
+	// #endif
+}
+
+export function uninstallLiquidTabBar(): void {
+	// #ifdef APP-ANDROID
+	try {
+		hideLiquidTabBar()
+	} catch (_) { }
+	attached = false
+	// #endif
+}

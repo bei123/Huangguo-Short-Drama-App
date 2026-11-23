@@ -1,0 +1,185 @@
+import { publicGet, dynamicGet, userGet } from '../http/client.uts'
+import { SortItem, TagHot, SuggestResult } from '../models/extra.uts'
+import { PageResult, VideoCard } from '../models/video.uts'
+import { parseCardPage, parseVideoCard } from './parse.uts'
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	return n != null ? (n as number) : fallback
+}
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	return v != null ? (v as string).trim() : fallback
+}
+
+export async function fetchSorts(): Promise<SortItem[]> {
+	const res = await publicGet('/api/site/sorts/video')
+	const data = res.getJSON('data')
+	const out: SortItem[] = []
+	if (data == null) {
+		return out
+	}
+	const arr = data!.getArray('items')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const it = list[i] as UTSJSONObject
+		out.push({
+			name: readStr(it, 'name', ''),
+			route: readStr(it, 'route', '')
+		} as SortItem)
+	}
+	return out
+}
+
+export async function fetchVideosBySort(route: string, page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/videos/sort/' + encodeURIComponent(route) + '?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchOriginalVideos(page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/videos?is_original=1&page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchAllVideos(page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/videos?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchLongVideos(page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/videos/long?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchVideosByTag(tag: string, page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/videos/tag/' + encodeURIComponent(tag) + '?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchFeedRecommend(page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/feed/recommend?page=' + page)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchFeedToday(page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/feed/today?page=' + page)
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchFollowingVideos(page: number): Promise<PageResult<VideoCard>> {
+	const res = await userGet('/api/videos/following?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}
+
+export async function fetchHotTags(): Promise<TagHot[]> {
+	const res = await publicGet('/api/search/tags/hot')
+	const data = res.getJSON('data')
+	const out: TagHot[] = []
+	if (data == null) {
+		return out
+	}
+	const arr = data!.getArray('items')
+	if (arr == null) {
+		return out
+	}
+	const list = arr as Array<any>
+	for (let i = 0; i < list.length; i++) {
+		const it = list[i] as UTSJSONObject
+		out.push({
+			word: readStr(it, 'name', readStr(it, 'word', '')),
+			heat: readNum(it, 'heat', 0)
+		} as TagHot)
+	}
+	return out
+}
+
+export async function fetchSuggest(q: string): Promise<SuggestResult> {
+	const res = await publicGet('/api/search/suggest?q=' + encodeURIComponent(q))
+	const data = res.getJSON('data')
+	const words: string[] = []
+	const tags: string[] = []
+	const content: VideoCard[] = []
+	if (data == null) {
+		return { words: words, tags: tags, content: content } as SuggestResult
+	}
+	const items = data!.getArray('items')
+	if (items != null) {
+		const list = items as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			words.push(('' + list[i]).trim())
+		}
+	}
+	const tagArr = data!.getArray('tags')
+	if (tagArr != null) {
+		const list = tagArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			tags.push(('' + list[i]).trim())
+		}
+	}
+	const cArr = data!.getArray('content')
+	if (cArr != null) {
+		const list = cArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			content.push(parseVideoCard(list[i] as UTSJSONObject))
+		}
+	}
+	return { words: words, tags: tags, content: content } as SuggestResult
+}
+
+export async function fetchNextVideo(videoId: string): Promise<VideoCard | null> {
+	const res = await dynamicGet('/api/videos/' + encodeURIComponent(videoId) + '/next')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return null
+	}
+	const item = data!.getJSON('item')
+	if (item == null) {
+		return null
+	}
+	return parseVideoCard(item!)
+}
+
+export async function fetchUserVideos(uid: number, page: number): Promise<PageResult<VideoCard>> {
+	const res = await publicGet('/api/videos/user/' + uid + '?page=' + page + '&size=20')
+	const data = res.getJSON('data')
+	if (data == null) {
+		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
+	}
+	return parseCardPage(data!)
+}

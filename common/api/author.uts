@@ -1,0 +1,98 @@
+import { publicGet, dynamicGet } from '../http/client.uts'
+import { AuthorProfile, PostCard } from '../models/extra.uts'
+import { resolveCoverUrl } from '../http/config.uts'
+import { fetchUserVideos } from './content.uts'
+import { parsePostCard } from './posts.uts'
+import { PageResult, VideoCard } from '../models/video.uts'
+
+function readNum(obj: UTSJSONObject, key: string, fallback: number = 0): number {
+	const n = obj.getNumber(key)
+	return n != null ? (n as number) : fallback
+}
+
+function readStr(obj: UTSJSONObject, key: string, fallback: string = ''): string {
+	const v = obj.getString(key)
+	return v != null ? (v as string).trim() : fallback
+}
+
+export async function fetchAuthor(uid: number): Promise<AuthorProfile> {
+	const res = await dynamicGet('/api/users/' + uid)
+	const data = res.getJSON('data')
+	if (data == null) {
+		throw new Error('author empty')
+	}
+	let followers = 0
+	let following = 0
+	let likeCount = 0
+	let videoCount = 0
+	let postCount = 0
+	const counts = data!.getJSON('counts')
+	if (counts != null) {
+		followers = readNum(counts!, 'follower', readNum(counts!, 'followers', 0)) as number
+		following = readNum(counts!, 'following', 0) as number
+		likeCount = readNum(counts!, 'like', 0) as number
+		videoCount = readNum(counts!, 'video', 0) as number
+		postCount = readNum(counts!, 'post', 0) as number
+	}
+	try {
+		const statsRes = await publicGet('/api/users/' + uid + '/stats')
+		const stats = statsRes.getJSON('data')
+		if (stats != null) {
+			followers = readNum(stats!, 'followers', followers) as number
+			following = readNum(stats!, 'following', following) as number
+			likeCount = readNum(stats!, 'like_count', likeCount) as number
+			videoCount = readNum(stats!, 'video_count', videoCount) as number
+			postCount = readNum(stats!, 'post_count', postCount) as number
+		}
+	} catch (_) { }
+	let isFollowing = false
+	const interaction = data!.getJSON('interaction')
+	if (interaction != null) {
+		isFollowing = interaction!.getBoolean('is_following') ?? false
+	}
+	return {
+		id: readNum(data!, 'id', uid) as number,
+		nickname: readStr(data!, 'nickname', readStr(data!, 'username', '')),
+		avatar: resolveCoverUrl(readStr(data!, 'avatar', '')),
+		avatarColor: readStr(data!, 'avatar_color', '#8C8C8C'),
+		sign: readStr(data!, 'sign', ''),
+		desc: readStr(data!, 'desc', ''),
+		followers: followers,
+		following: following,
+		likeCount: likeCount,
+		videoCount: videoCount,
+		postCount: postCount,
+		isFollowing: isFollowing
+	} as AuthorProfile
+}
+
+export async function fetchAuthorVideos(uid: number, page: number): Promise<PageResult<VideoCard>> {
+	return await fetchUserVideos(uid, page)
+}
+
+export async function fetchAuthorPosts(uid: number, page: number, sort: string = 'hot'): Promise<PageResult<PostCard>> {
+	let path = '/api/posts/user/' + uid + '?page=' + page + '&size=20'
+	if (sort.length > 0) {
+		path = path + '&sort=' + encodeURIComponent(sort)
+	}
+	const res = await publicGet(path)
+	const data = res.getJSON('data')
+	const items: PostCard[] = []
+	if (data == null) {
+		return { items: items, page: 1, pages: 1, total: 0 } as PageResult<PostCard>
+	}
+	const arr = data!.getArray('items')
+	if (arr != null) {
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			items.push(parsePostCard(list[i] as UTSJSONObject))
+		}
+	}
+	const pag = data!.getJSON('pagination')
+	return {
+		items: items,
+		page: pag != null ? readNum(pag!, 'page', page) as number : page,
+		pages: pag != null ? readNum(pag!, 'pages', 1) as number : 1,
+		total: pag != null ? readNum(pag!, 'total', items.length) as number : items.length
+	} as PageResult<PostCard>
+}

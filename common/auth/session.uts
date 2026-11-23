@@ -1,0 +1,89 @@
+const TOKEN_KEY = 'hg_token'
+const USER_KEY = 'hg_user_json'
+
+export type HgUser = {
+	id: number
+	username: string
+	nickname: string
+	avatar: string
+	avatarColor: string
+	sign: string
+	desc: string
+	likeCount: number
+	collectCount: number
+	followingCount: number
+	historyCount: number
+	favoriteVideoIds: number[]
+	likeVideoIds: number[]
+	followUserIds: number[]
+}
+
+let cachedToken: string | null = null
+let cachedUser: HgUser | null = null
+
+export function getToken(): string {
+	if (cachedToken != null) {
+		return cachedToken!
+	}
+	const t = uni.getStorageSync(TOKEN_KEY) as string | null
+	cachedToken = t != null ? t : ''
+	return cachedToken!
+}
+
+export function isLoggedIn(): boolean {
+	return getToken().length > 0
+}
+
+export function getUser(): HgUser | null {
+	if (cachedUser != null) {
+		return cachedUser
+	}
+	const raw = uni.getStorageSync(USER_KEY) as string | null
+	if (raw == null || raw.length == 0) {
+		return null
+	}
+	try {
+		cachedUser = JSON.parse(raw) as HgUser
+		return cachedUser
+	} catch (_) {
+		return null
+	}
+}
+
+export function saveSession(token: string, user: HgUser): void {
+	cachedToken = token
+	cachedUser = user
+	uni.setStorageSync(TOKEN_KEY, token)
+	uni.setStorageSync(USER_KEY, JSON.stringify(user))
+}
+
+export function updateUser(user: HgUser): void {
+	cachedUser = user
+	uni.setStorageSync(USER_KEY, JSON.stringify(user))
+}
+
+export function clearSession(): void {
+	cachedToken = ''
+	cachedUser = null
+	uni.removeStorageSync(TOKEN_KEY)
+	uni.removeStorageSync(USER_KEY)
+}
+
+export function emptyUser(): HgUser {
+	return {
+		id: 0,
+		username: '',
+		nickname: '',
+		avatar: '',
+		avatarColor: '#8C8C8C',
+		sign: '',
+		desc: '',
+		likeCount: 0,
+		collectCount: 0,
+		followingCount: 0,
+		historyCount: 0,
+		favoriteVideoIds: [] as number[],
+		likeVideoIds: [] as number[],
+		followUserIds: [] as number[]
+	} as HgUser
+}

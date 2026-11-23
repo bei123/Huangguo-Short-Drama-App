@@ -1,0 +1,346 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical">
+	<!-- #endif -->
+		<view class="page-inner" :style="pagePadStyle">
+			<view class="profile" hover-class="profile-hover" @click="onProfileTap">
+				<view class="avatar" :style="{ backgroundColor: avatarColor }">
+					<text class="avatar-text">{{avatarLetter}}</text>
+				</view>
+				<view class="profile-meta">
+					<text class="name">{{displayName}}</text>
+					<text class="sign" max-lines="1">{{displaySign}}</text>
+				</view>
+				<text class="profile-action">{{loggedIn ? '编辑' : '登录'}}</text>
+			</view>
+
+			<view v-if="loggedIn" class="stats">
+				<view class="stat" @click="goList('like')">
+					<text class="stat-n">{{userLike}}</text>
+					<text class="stat-l">点赞</text>
+				</view>
+				<view class="stat-div"></view>
+				<view class="stat" @click="goList('collect')">
+					<text class="stat-n">{{userCollect}}</text>
+					<text class="stat-l">收藏</text>
+				</view>
+				<view class="stat-div"></view>
+				<view class="stat" @click="goList('follow')">
+					<text class="stat-n">{{userFollow}}</text>
+					<text class="stat-l">关注</text>
+				</view>
+				<view class="stat-div"></view>
+				<view class="stat" @click="goList('history')">
+					<text class="stat-n">{{userHistory}}</text>
+					<text class="stat-l">历史</text>
+				</view>
+			</view>
+
+			<text class="group-label">我的内容</text>
+			<view class="menu">
+				<view class="menu-item" hover-class="menu-hover" @click="goList('history')">
+					<text class="menu-text">观看历史</text>
+					<text class="menu-arrow">›</text>
+				</view>
+				<view class="menu-item" hover-class="menu-hover" @click="goList('collect')">
+					<text class="menu-text">我的收藏</text>
+					<text class="menu-arrow">›</text>
+				</view>
+				<view class="menu-item" hover-class="menu-hover" @click="goList('like')">
+					<text class="menu-text">我的点赞</text>
+					<text class="menu-arrow">›</text>
+				</view>
+				<view class="menu-item menu-item-last" hover-class="menu-hover" @click="goList('follow')">
+					<text class="menu-text">我的关注</text>
+					<text class="menu-arrow">›</text>
+				</view>
+			</view>
+
+			<text class="group-label">其他</text>
+			<view class="menu">
+				<view class="menu-item" hover-class="menu-hover" @click="goMessages">
+					<text class="menu-text">消息中心</text>
+					<view class="menu-right">
+						<text v-if="unread > 0" class="badge">{{unread}}</text>
+						<text class="menu-arrow">›</text>
+					</view>
+				</view>
+				<view class="menu-item" hover-class="menu-hover" @click="goFeed">
+					<text class="menu-text">推荐信息流</text>
+					<text class="menu-arrow">›</text>
+				</view>
+				<view class="menu-item menu-item-last" hover-class="menu-hover" @click="goMore">
+					<text class="menu-text">关于与站点</text>
+					<text class="menu-arrow">›</text>
+				</view>
+			</view>
+
+			<view v-if="loggedIn" class="logout" @click="doLogout">
+				<text class="logout-text">退出登录</text>
+			</view>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { isLoggedIn, getUser, HgUser } from '../../common/auth/session.uts'
+	import { fetchMe, logout } from '../../common/api/account.uts'
+	import { fetchUnreadCount } from '../../common/api/interact.uts'
+	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
+	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+
+	const pagePadStyle = 'padding: 16px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+
+	const loggedIn = ref(false)
+	const displayName = ref('点击登录')
+	const displaySign = ref('登录后同步云端数据')
+	const avatarColor = ref('#8C8C8C')
+	const avatarLetter = ref('?')
+	const userLike = ref(0)
+	const userCollect = ref(0)
+	const userFollow = ref(0)
+	const userHistory = ref(0)
+	const unread = ref(0)
+
+	function applyUser(u: HgUser | null) {
+		loggedIn.value = isLoggedIn()
+		if (u == null || !loggedIn.value) {
+			displayName.value = '点击登录'
+			displaySign.value = '登录后同步云端数据'
+			avatarColor.value = '#8C8C8C'
+			avatarLetter.value = '?'
+			userLike.value = 0
+			userCollect.value = 0
+			userFollow.value = 0
+			userHistory.value = 0
+			return
+		}
+		displayName.value = u.nickname.length > 0 ? u.nickname : u.username
+		displaySign.value = u.sign.length > 0 ? u.sign : '欢迎回来'
+		avatarColor.value = u.avatarColor.length > 0 ? u.avatarColor : '#8C8C8C'
+		avatarLetter.value = displayName.value.substring(0, 1)
+		userLike.value = u.likeCount
+		userCollect.value = u.collectCount
+		userFollow.value = u.followingCount
+		userHistory.value = u.historyCount
+	}
+
+	async function refresh() {
+		applyUser(getUser())
+		if (!isLoggedIn()) {
+			return
+		}
+		try {
+			const me = await fetchMe()
+			applyUser(me)
+		} catch (_) {
+			applyUser(getUser())
+		}
+		try {
+			unread.value = await fetchUnreadCount()
+		} catch (_) {
+			unread.value = 0
+		}
+	}
+
+	function requireLogin(): boolean {
+		if (isLoggedIn()) {
+			return true
+		}
+		uni.navigateTo({ url: '/pages/login/login' })
+		return false
+	}
+
+	function onProfileTap() {
+		if (!isLoggedIn()) {
+			uni.navigateTo({ url: '/pages/login/login' })
+			return
+		}
+		uni.navigateTo({ url: '/pages/profile-edit/profile-edit' })
+	}
+
+	function goList(type: string) {
+		if (!requireLogin()) {
+			return
+		}
+		uni.navigateTo({ url: '/pages/my-list/my-list?type=' + type })
+	}
+
+	function goMessages() {
+		if (!requireLogin()) {
+			return
+		}
+		uni.navigateTo({ url: '/pages/messages/messages' })
+	}
+
+	function goFeed() {
+		uni.navigateTo({ url: '/pages/feed/feed' })
+	}
+
+	function goMore() {
+		uni.navigateTo({ url: '/pages/more/more' })
+	}
+
+	async function doLogout() {
+		await logout()
+		applyUser(null)
+		uni.showToast({ title: '已退出', icon: 'none' })
+	}
+
+	onShow(() => {
+		refresh()
+		try {
+			installLiquidTabBar()
+			syncLiquidTabIndex('/pages/mine/mine')
+		} catch (_) { }
+	})
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #12141a;
+	}
+	.page-inner {
+		padding: 16px;
+	}
+	.profile {
+		flex-direction: row;
+		align-items: center;
+		padding: 16px 14px;
+		background-color: #1A1D26;
+		border-radius: 14px;
+		margin-bottom: 16px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.profile-hover {
+		background-color: #22262F;
+	}
+	.avatar {
+		width: 60px;
+		height: 60px;
+		border-radius: 30px;
+		align-items: center;
+		justify-content: center;
+	}
+	.avatar-text {
+		color: #ffffff;
+		font-size: 24px;
+		font-weight: bold;
+	}
+	.profile-meta {
+		margin-left: 14px;
+		flex: 1;
+	}
+	.name {
+		color: #F2F3F5;
+		font-size: 20px;
+		font-weight: bold;
+	}
+	.sign {
+		margin-top: 5px;
+		color: #8A8E96;
+		font-size: 13px;
+		text-overflow: ellipsis;
+	}
+	.profile-action {
+		color: #E8C27A;
+		font-size: 13px;
+		padding: 6px 12px;
+		background-color: #2A261C;
+		border-radius: 14px;
+	}
+	.stats {
+		flex-direction: row;
+		align-items: center;
+		padding: 18px 8px;
+		margin-bottom: 20px;
+		background-color: #1A1D26;
+		border-radius: 14px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.stat {
+		flex: 1;
+		align-items: center;
+	}
+	.stat-div {
+		width: 1px;
+		height: 28px;
+		background-color: #2A2E38;
+	}
+	.stat-n {
+		color: #E8C27A;
+		font-size: 20px;
+		font-weight: bold;
+	}
+	.stat-l {
+		margin-top: 6px;
+		color: #8A8E96;
+		font-size: 12px;
+	}
+	.group-label {
+		color: #8A8E96;
+		font-size: 12px;
+		margin-bottom: 8px;
+		margin-left: 4px;
+	}
+	.menu {
+		background-color: #1A1D26;
+		border-radius: 12px;
+		overflow: hidden;
+		margin-bottom: 18px;
+	}
+	.menu-item {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 16px 14px;
+		border-bottom-width: 1px;
+		border-bottom-color: #2A2E38;
+		border-bottom-style: solid;
+	}
+	.menu-item-last {
+		border-bottom-width: 0;
+	}
+	.menu-hover {
+		background-color: #22262F;
+	}
+	.menu-text {
+		color: #F2F3F5;
+		font-size: 15px;
+	}
+	.menu-right {
+		flex-direction: row;
+		align-items: center;
+	}
+	.badge {
+		color: #1A1208;
+		font-size: 11px;
+		background-color: #E8C27A;
+		padding: 2px 7px;
+		border-radius: 8px;
+		margin-right: 8px;
+	}
+	.menu-arrow {
+		color: #6F737A;
+		font-size: 18px;
+	}
+	.logout {
+		margin-top: 8px;
+		height: 46px;
+		border-radius: 12px;
+		background-color: #2A1F1F;
+		align-items: center;
+		justify-content: center;
+	}
+	.logout-text {
+		color: #E07070;
+		font-size: 15px;
+	}
+</style>

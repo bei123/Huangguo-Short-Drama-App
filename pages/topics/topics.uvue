@@ -1,0 +1,103 @@
+<template>
+	<!-- #ifdef APP -->
+	<scroll-view class="page" direction="vertical" @scrolltolower="loadMore">
+	<!-- #endif -->
+		<view class="page-inner">
+			<view v-if="loading && items.length == 0" class="state-box">
+				<text class="state-text">加载中…</text>
+			</view>
+			<view v-else-if="errorText.length > 0 && items.length == 0" class="state-box" @click="reload">
+				<text class="state-text">{{errorText}}</text>
+			</view>
+			<hg-empty v-if="!loading && errorText.length == 0 && items.length == 0" mark="辑" title="暂无专题"></hg-empty>
+			<view v-for="it in items" :key="it.id" class="card" hover-class="card-hover" @click="openTopic(it.slug, it.title)">
+				<hg-cover :src="it.cover" :width="110" :height="70" :radius="8"></hg-cover>
+				<view class="meta">
+					<text class="title" max-lines="2">{{it.title}}</text>
+					<text class="sub">{{it.videoCount}} 部作品</text>
+					<text class="intro" max-lines="2">{{it.intro}}</text>
+				</view>
+			</view>
+			<text v-if="loadingMore" class="footer">加载更多…</text>
+		</view>
+	<!-- #ifdef APP -->
+	</scroll-view>
+	<!-- #endif -->
+</template>
+
+<script setup lang="uts">
+	import { fetchTopics } from '../../common/api/topics.uts'
+	import { TopicItem } from '../../common/models/extra.uts'
+
+	const loading = ref(true)
+	const loadingMore = ref(false)
+	const errorText = ref('')
+	const items = ref<TopicItem[]>([] as TopicItem[])
+	const page = ref(1)
+	const pages = ref(1)
+
+	async function reload() {
+		loading.value = true
+		errorText.value = ''
+		try {
+			const res = await fetchTopics(1)
+			items.value = res.items
+			page.value = res.page
+			pages.value = res.pages
+		} catch (e) {
+			errorText.value = '' + e
+		} finally {
+			loading.value = false
+		}
+	}
+
+	async function loadMore() {
+		if (page.value >= pages.value || loadingMore.value) {
+			return
+		}
+		loadingMore.value = true
+		try {
+			const res = await fetchTopics(page.value + 1)
+			const merged = items.value.slice(0)
+			for (let i = 0; i < res.items.length; i++) {
+				merged.push(res.items[i])
+			}
+			items.value = merged
+			page.value = res.page
+			pages.value = res.pages
+		} catch (_) { } finally {
+			loadingMore.value = false
+		}
+	}
+
+	function openTopic(slug: string, title: string) {
+		uni.navigateTo({
+			url: '/pages/topic-detail/topic-detail?slug=' + encodeURIComponent(slug) + '&title=' + encodeURIComponent(title)
+		})
+	}
+
+	onLoad(() => { reload() })
+</script>
+
+<style>
+	.page { flex: 1; background-color: #12141a; }
+	.page-inner { padding: 14px 16px 28px 16px; }
+	.state-box { padding-top: 72px; align-items: center; }
+	.state-text { color: #8A8E96; font-size: 14px; }
+	.card {
+		flex-direction: row;
+		background-color: #1A1D26;
+		border-radius: 12px;
+		padding: 12px;
+		margin-bottom: 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #2A2E38;
+	}
+	.card-hover { background-color: #22262F; }
+	.meta { flex: 1; margin-left: 12px; justify-content: center; }
+	.title { color: #F2F3F5; font-size: 15px; font-weight: bold; text-overflow: ellipsis; }
+	.sub { margin-top: 6px; color: #E8C27A; font-size: 12px; }
+	.intro { margin-top: 4px; color: #8A8E96; font-size: 12px; text-overflow: ellipsis; }
+	.footer { text-align: center; color: #6F737A; font-size: 12px; padding: 10px; }
+</style>
