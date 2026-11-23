@@ -7,15 +7,29 @@
 | | |
 | --- | --- |
 | 本仓库 | https://github.com/bei123/Huangguo-Short-Drama-App |
+| 安装包 | [Releases](https://github.com/bei123/Huangguo-Short-Drama-App/releases) |
 | iOS 原生版（推荐） | https://github.com/bei123/HuangguoNative |
 | 协议 | [MIT](./LICENSE) |
+
+## 下载
+
+最新版：[v1.0.9](https://github.com/bei123/Huangguo-Short-Drama-App/releases/tag/v1.0.9)
+
+两个 APK **功能相同**，仅 CPU 架构不同：
+
+| 文件 | 架构 | 适用设备 |
+| --- | --- | --- |
+| **HGV8a.apk** | `arm64-v8a` | 近些年大多数手机（优先装这个） |
+| **HGV7a.apk** | `armeabi-v7a` | 较老的 32 位 ARM 机型 |
+
+不确定时先装 **HGV8a**；若提示不兼容再试 **HGV7a**。签名与旧调试包不同时，需先卸载再装。
 
 ## 环境
 
 | 项 | 说明 |
 | --- | --- |
 | 工程类型 | uni-app x（Vapor） |
-| 版本 | `manifest.json` → 1.0.8（108） |
+| 版本 | `manifest.json` → 1.0.9（109） |
 | 主平台 | **Android** |
 | iOS | 兼容性不佳；需要 iOS 请用 [HuangguoNative](https://github.com/bei123/HuangguoNative) |
 
