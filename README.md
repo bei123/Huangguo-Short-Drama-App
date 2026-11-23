@@ -15,7 +15,7 @@
 | 项 | 说明 |
 | --- | --- |
 | 工程类型 | uni-app x（Vapor） |
-| 版本 | `manifest.json` → 1.0.6（106） |
+| 版本 | `manifest.json` → 1.0.8（108） |
 | 主平台 | **Android** |
 | iOS | 兼容性不佳；需要 iOS 请用 [HuangguoNative](https://github.com/bei123/HuangguoNative) |
 
@@ -25,6 +25,8 @@
 
 - **首页**：Banner、精选、更新、分类 / 专题推荐
 - **发现**：分类列表
+- **刷短剧**（Tab 居中）：竖滑推荐流；点赞 / 收藏 / 评论；长按 2 倍速；进度条拖拽预览
+- **连看全集**：推荐流内点「全集」进入分集竖滑；上滑切下一集，返回 /「推荐」退出回推荐流
 - **搜索**：热词与结果
 - **我的**：登录注册、历史 / 收藏 / 点赞 / 关注、消息、编辑资料
 - **播放与内容**：详情播放、榜单、专题、图文、推荐流、作者页等
@@ -36,11 +38,12 @@
 
 - `dx150-edge-v1`：ECDH P-256 → HKDF → AES-GCM
 - 原生 UTS：Android 为主（`utssdk/app-android`）；iOS 有实验性扩展（`utssdk/app-ios`），完整体验请用原生仓库
+- Token 失效（如 401）会清理本地会话，避免盲重试
 
-**UI**
+**导航**
 
-- 骨架屏、空态、视频卡片等通用组件（`components/`）
-- iOS Liquid Glass Tab 模块存在但不稳定，非正式能力
+- 液态玻璃 TabBar（`uni_modules/hg-liquid-glass` · GlassTabHost）：首页 / 发现 / **刷短剧** / 搜索 / 我的
+- 系统 `pages.json` tabBar 占位 + 原生覆盖绘制
 
 **接口说明**
 
@@ -50,12 +53,12 @@
 
 ```
 Huangguo-Short-Drama-App/
-├── pages/              # 业务页面
+├── pages/              # 业务页面（含 swipe 刷短剧 / 连看）
 ├── components/         # 通用组件
 ├── common/             # API、鉴权、加密、模型、UI 工具
 ├── uni_modules/
 │   ├── hg-edge/        # 边缘加密原生模块
-│   └── hg-liquid-glass/# Liquid Glass Tab 模块
+│   └── hg-liquid-glass/# 液态玻璃 TabBar
 ├── static/             # 静态资源
 ├── App.uvue / pages.json / manifest.json
 └── huangguo-api-and-crypto.md
