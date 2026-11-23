@@ -59,7 +59,7 @@ Huangguo-Short-Drama-App/
 ├── uni_modules/
 │   ├── hg-edge/        # 边缘加密原生模块
 │   └── hg-liquid-glass/# 液态玻璃 TabBar
-├── static/             # 静态资源
+├── static/             # 静态资源（含 app-icons 打包图标）
 ├── App.uvue / pages.json / manifest.json
 └── huangguo-api-and-crypto.md
 ```
@@ -67,5 +67,6 @@ Huangguo-Short-Drama-App/
 ## 说明
 
 - 本仓库面向 **Android**；iOS 请使用 [HuangguoNative](https://github.com/bei123/HuangguoNative)
+- Android 应用图标：`static/app-icons/`（72/96/144/192），已写入 `manifest.json` → `app-android.distribute.icons`；需**云打包**后才会出现在桌面
 - `unpackage/`、`.hbuilderx/` 已忽略，不进仓库
 - 登录态等本地数据由客户端运行时管理
