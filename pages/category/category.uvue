@@ -15,19 +15,19 @@
 			<!-- 榜单：横向主入口 -->
 			<view class="rank-strip">
 				<view class="rank-cell rank-hot" hover-class="rank-press" @click="openRank('hot', '热播榜')">
-					<text class="rank-tag">HOT</text>
+					<image class="rank-icon" src="/static/quick/rank.png" mode="aspectFit"></image>
 					<text class="rank-name">热播榜</text>
 					<text class="rank-hint">本周热力</text>
 				</view>
 				<view class="rank-cell rank-rec" hover-class="rank-press" @click="openRank('recommend', '推荐榜')">
-					<text class="rank-tag">PICK</text>
+					<image class="rank-icon" src="/static/quick/pick.png" mode="aspectFit"></image>
 					<text class="rank-name">推荐榜</text>
-					<text class="rank-hint">口碑精选</text>
+					<text class="rank-hint rank-hint-rec">口碑精选</text>
 				</view>
 				<view class="rank-cell rank-pot rank-cell-last" hover-class="rank-press" @click="openRank('potential', '潜力榜')">
-					<text class="rank-tag">NEW</text>
+					<image class="rank-icon" src="/static/quick/potential.png" mode="aspectFit"></image>
 					<text class="rank-name">潜力榜</text>
-					<text class="rank-hint">新作崛起</text>
+					<text class="rank-hint rank-hint-pot">新作崛起</text>
 				</view>
 			</view>
 
@@ -60,7 +60,7 @@
 					@click="openCategory(c.route, c.name)"
 				>
 					<view class="cate-mark">
-						<text class="cate-letter">{{cateLetter(c.name)}}</text>
+						<image class="cate-icon" src="/static/quick/cate.png" mode="aspectFit"></image>
 					</view>
 					<text class="cate-name" max-lines="1">{{c.name}}</text>
 					<text class="cate-go">›</text>
@@ -74,32 +74,32 @@
 			</view>
 			<view class="channel-grid">
 				<view class="channel" hover-class="channel-press" @click="goTopics">
-					<text class="channel-mark">辑</text>
+					<image class="channel-icon" src="/static/quick/topic.png" mode="aspectFit"></image>
 					<text class="channel-name">专题合集</text>
 					<text class="channel-desc">人工编排专辑</text>
 				</view>
 				<view class="channel channel-even" hover-class="channel-press" @click="goPosts">
-					<text class="channel-mark">讯</text>
+					<image class="channel-icon" src="/static/quick/posts.png" mode="aspectFit"></image>
 					<text class="channel-name">图文资讯</text>
 					<text class="channel-desc">剧评与幕后</text>
 				</view>
 				<view class="channel" hover-class="channel-press" @click="goFeed">
-					<text class="channel-mark">流</text>
+					<image class="channel-icon" src="/static/quick/feed.png" mode="aspectFit"></image>
 					<text class="channel-name">推荐信息流</text>
 					<text class="channel-desc">今日推荐</text>
 				</view>
 				<view class="channel channel-even" hover-class="channel-press" @click="goOriginal">
-					<text class="channel-mark">创</text>
+					<image class="channel-icon" src="/static/quick/original.png" mode="aspectFit"></image>
 					<text class="channel-name">原创专区</text>
 					<text class="channel-desc">原创短剧</text>
 				</view>
 				<view class="channel" hover-class="channel-press" @click="goLong">
-					<text class="channel-mark">长</text>
+					<image class="channel-icon" src="/static/quick/long.png" mode="aspectFit"></image>
 					<text class="channel-name">长视频</text>
 					<text class="channel-desc">更长篇幅</text>
 				</view>
 				<view class="channel channel-even" hover-class="channel-press" @click="goSort('new', '最近更新')">
-					<text class="channel-mark">新</text>
+					<image class="channel-icon" src="/static/quick/latest.png" mode="aspectFit"></image>
 					<text class="channel-name">最近更新</text>
 					<text class="channel-desc">按时间浏览</text>
 				</view>
@@ -136,13 +136,6 @@
 		}
 		return n + ' 个分类'
 	})
-
-	function cateLetter(name: string): string {
-		if (name.length == 0) {
-			return '·'
-		}
-		return name.substring(0, 1)
-	}
 
 	function openCategory(route: string, name: string) {
 		uni.navigateTo({
@@ -290,9 +283,9 @@
 		opacity: 0.82;
 	}
 
-	.rank-tag {
-		color: #8A8E96;
-		font-size: 10px;
+	.rank-icon {
+		width: 28px;
+		height: 28px;
 		margin-bottom: 10px;
 	}
 
@@ -308,9 +301,17 @@
 		font-size: 11px;
 	}
 
+	.rank-hint-rec {
+		color: #7A9EC8;
+	}
+
+	.rank-hint-pot {
+		color: #7AC8A0;
+	}
+
 	.section-head {
 		flex-direction: row;
-		align-items: baseline;
+		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 12px;
 	}
@@ -366,10 +367,9 @@
 		margin-right: 12px;
 	}
 
-	.cate-letter {
-		color: #E8C27A;
-		font-size: 15px;
-		font-weight: bold;
+	.cate-icon {
+		width: 20px;
+		height: 20px;
 	}
 
 	.cate-name {
@@ -411,11 +411,10 @@
 		background-color: #22262F;
 	}
 
-	.channel-mark {
-		color: #E8C27A;
-		font-size: 13px;
-		font-weight: bold;
-		margin-bottom: 8px;
+	.channel-icon {
+		width: 22px;
+		height: 22px;
+		margin-bottom: 10px;
 	}
 
 	.channel-name {

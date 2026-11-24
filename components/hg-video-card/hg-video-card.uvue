@@ -22,8 +22,9 @@
 		score: { type: Number, default: 0 },
 		badge: { type: String, default: '' },
 		sub: { type: String, default: '' },
-		coverW: { type: Number, default: 112 },
-		coverH: { type: Number, default: 154 },
+		/* CDN 封面实测均为 3:4（如 1086×1448），须同比例以免 aspectFill 裁左右 */
+		coverW: { type: Number, default: 120 },
+		coverH: { type: Number, default: 160 },
 		/** 网格内去掉右边距 */
 		tight: { type: Boolean, default: false }
 	})
@@ -48,6 +49,7 @@
 <style>
 	.card {
 		margin-right: 12px;
+		flex-shrink: 0;
 	}
 
 	.card-tight {
@@ -63,6 +65,8 @@
 		border-radius: 10px;
 		overflow: hidden;
 		background-color: #1A1D26;
+		/* 固定封面盒，避免被横向 scroll-view 高度挤压 */
+		flex-shrink: 0;
 	}
 
 	.card-badge {

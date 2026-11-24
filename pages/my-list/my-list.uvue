@@ -30,7 +30,7 @@
 						<text class="row-arrow">›</text>
 					</view>
 					<text v-if="loadingMore" class="footer">加载更多…</text>
-					<text v-else-if="!hasMore && type != 'history'" class="footer">没有更多了</text>
+					<text v-else-if="!hasMore && rows.length > 0" class="footer">没有更多了</text>
 				</template>
 			</view>
 		<!-- #ifdef APP -->
@@ -42,6 +42,8 @@
 <script setup lang="uts">
 	import { fetchMyHistory, fetchPostHistoryHtml, fetchMyCollects, fetchMyLikes, fetchMyFollows } from '../../common/api/interact.uts'
 	import { HistoryItem, PostHistoryItem } from '../../common/models/extra.uts'
+	import { ensureEndpointReady } from '../../common/http/endpoint-probe.uts'
+	import { isLoggedIn } from '../../common/auth/session.uts'
 
 	type RowItem = {
 		key: string
@@ -67,9 +69,6 @@
 	const pages = ref(1)
 
 	const hasMore = computed((): boolean => {
-		if (type.value == 'history') {
-			return false
-		}
 		return page.value < pages.value
 	})
 
@@ -153,27 +152,47 @@
 		filterHistory()
 	}
 
-	async function loadAllHistory(): Promise<void> {
-		// 文档 16.6 完整路线：JSON 视频 + HTML 图文
-		const first = await fetchMyHistory(1)
-		const merged = first.items.slice(0)
-		let p = first.page
-		let totalPages = first.pages
-		while (p < totalPages && p < 20) {
-			p++
-			const next = await fetchMyHistory(p)
-			for (let i = 0; i < next.items.length; i++) {
-				merged.push(next.items[i])
-			}
-			totalPages = next.pages
-		}
-		videoHistory.value = merged
+	async function loadHistoryFast(): Promise<void> {
+		// 旧逻辑会串行拉最多 20 页，极慢；改为首屏只拉第 1 页，图文并行，其余上滑再载
+		page.value = 1
+		pages.value = 1
+		videoHistory.value = [] as HistoryItem[]
+		postHistory.value = [] as PostHistoryItem[]
+
+		const histTask = fetchMyHistory(1)
+		const postTask = fetchPostHistoryHtml()
+
+		const first = await histTask
+		videoHistory.value = first.items.slice(0)
+		page.value = first.page
+		pages.value = first.pages > 0 ? first.pages : 1
+		filterHistory()
+		// 视频已可展示，图文稍后合并，避免 HTML 拖慢首屏
+		loading.value = false
 
 		try {
-			postHistory.value = await fetchPostHistoryHtml()
+			postHistory.value = await postTask
 		} catch (e) {
 			console.log('[history] chigua html fail ' + e)
 			postHistory.value = [] as PostHistoryItem[]
+		}
+		filterHistory()
+	}
+
+	async function loadMoreHistory(): Promise<void> {
+		if (page.value >= pages.value) {
+			return
+		}
+		const nextPage = page.value + 1
+		const next = await fetchMyHistory(nextPage)
+		const merged = videoHistory.value.slice(0)
+		for (let i = 0; i < next.items.length; i++) {
+			merged.push(next.items[i])
+		}
+		videoHistory.value = merged
+		page.value = next.page
+		if (next.pages > 0) {
+			pages.value = next.pages
 		}
 		filterHistory()
 	}
@@ -248,30 +267,46 @@
 		errorText.value = ''
 		rows.value = [] as RowItem[]
 		try {
-			if (type.value == 'history') {
-				await loadAllHistory()
-			} else {
-				rows.value = await fetchPage(1)
+			// 探测已完成时几乎瞬时；未完成则等最快线路，避免打到慢镜像
+			await ensureEndpointReady()
+			if (!isLoggedIn()) {
+				errorText.value = '请先登录后查看'
+				return
 			}
+			if (type.value == 'history') {
+				await loadHistoryFast()
+				return
+			}
+			rows.value = await fetchPage(1)
 		} catch (e) {
-			errorText.value = '' + e
+			const msg = '' + e
+			if (msg.indexOf('未登录') >= 0 || msg.indexOf('401') >= 0 || msg.indexOf('登录已失效') >= 0) {
+				errorText.value = '登录已失效，请重新登录'
+			} else {
+				errorText.value = '加载失败，点击重试（可先在「我的」切换线路）'
+			}
+			console.log('[my-list] reload ' + e)
 		} finally {
 			loading.value = false
 		}
 	}
 
 	async function loadMore() {
-		if (type.value == 'history' || !hasMore.value || loadingMore.value || loading.value) {
+		if (!hasMore.value || loadingMore.value || loading.value) {
 			return
 		}
 		loadingMore.value = true
 		try {
-			const next = await fetchPage(page.value + 1)
-			const merged = rows.value.slice(0)
-			for (let i = 0; i < next.length; i++) {
-				merged.push(next[i])
+			if (type.value == 'history') {
+				await loadMoreHistory()
+			} else {
+				const next = await fetchPage(page.value + 1)
+				const merged = rows.value.slice(0)
+				for (let i = 0; i < next.length; i++) {
+					merged.push(next[i])
+				}
+				rows.value = merged
 			}
-			rows.value = merged
 		} catch (e) {
 			console.log('[my-list] more fail ' + e)
 		} finally {

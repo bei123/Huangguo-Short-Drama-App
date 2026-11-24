@@ -131,13 +131,13 @@
 	}
 
 	.sk-card {
-		width: 112px;
+		width: 120px;
 		margin-right: 12px;
 	}
 
 	.sk-cover {
-		width: 112px;
-		height: 154px;
+		width: 120px;
+		height: 160px;
 		border-radius: 10px;
 	}
 

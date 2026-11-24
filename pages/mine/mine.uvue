@@ -107,7 +107,7 @@
 				<!-- #ifdef APP -->
 				<scroll-view class="sheet-scroll" direction="vertical">
 				<!-- #endif -->
-					<view class="sheet-list">
+					<view class="sheet-list" :style="sheetListPadStyle">
 						<view
 							v-for="(item, idx) in lines"
 							:key="item.url"
@@ -138,12 +138,13 @@
 	import { isLoggedIn, getUser, HgUser } from '../../common/auth/session.uts'
 	import { fetchMe, logout } from '../../common/api/account.uts'
 	import { fetchUnreadCount } from '../../common/api/interact.uts'
-	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
+	import { installLiquidTabBar, syncLiquidTabIndex, uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
 	import { getHgBaseUrl } from '../../common/http/config.uts'
 	import {
 		EndpointLatency,
+		ensureEndpointReady,
 		getLastLatencies,
 		hostOf,
 		measureAllEndpoints,
@@ -168,8 +169,17 @@
 	const lineMeasuring = ref(false)
 	const lineSheetOpen = ref(false)
 	const currentHost = ref(hostOf(getHgBaseUrl()))
+	// 打开时隐藏原生 Tab，面板贴底；底距只留手势条
 	const sheetH = Math.floor(uni.getWindowInfo().windowHeight * 0.55)
-	const sheetStyle = 'height:' + sheetH + 'px'
+	let sheetSafeBot = 16
+	try {
+		const insets = uni.getWindowInfo().safeAreaInsets
+		if (insets != null && insets.bottom > sheetSafeBot) {
+			sheetSafeBot = insets.bottom
+		}
+	} catch (_) { }
+	const sheetStyle = 'height:' + sheetH + 'px;margin-bottom:0px'
+	const sheetListPadStyle = 'padding-bottom:' + (sheetSafeBot + 8) + 'px'
 
 	const currentLatencyTip = computed((): string => {
 		const cur = getHgBaseUrl()
@@ -228,6 +238,9 @@
 
 	function openLineSheet() {
 		lineSheetOpen.value = true
+		try {
+			uninstallLiquidTabBar()
+		} catch (_) { }
 		syncLinesFromCache()
 		if (lines.value.length == 0) {
 			refreshLines()
@@ -235,7 +248,13 @@
 	}
 
 	function closeLineSheet() {
+		const wasOpen = lineSheetOpen.value
 		lineSheetOpen.value = false
+		if (wasOpen) {
+			try {
+				syncLiquidTabIndex('/pages/mine/mine')
+			} catch (_) { }
+		}
 	}
 
 	async function refreshLines() {
@@ -310,6 +329,9 @@
 		if (!isLoggedIn()) {
 			return
 		}
+		try {
+			await ensureEndpointReady()
+		} catch (_) { }
 		try {
 			const me = await fetchMe()
 			applyUser(me)
@@ -561,9 +583,6 @@
 	}
 	.sheet-scroll {
 		flex: 1;
-	}
-	.sheet-list {
-		padding-bottom: 24px;
 	}
 	.line-item {
 		flex-direction: row;

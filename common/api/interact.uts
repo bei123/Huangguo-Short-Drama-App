@@ -114,7 +114,7 @@ export async function visitVideo(id: string): Promise<void> {
 }
 
 export async function fetchMyHistory(page: number): Promise<PageResult<HistoryItem>> {
-	const res = await userGet('/api/users/me/history?page=' + page + '&size=20')
+	const res = await userGet('/api/users/me/history?page=' + page + '&size=30')
 	const data = res.getJSON('data')
 	const items: HistoryItem[] = []
 	if (data == null) {
@@ -267,7 +267,7 @@ export async function fetchPostHistoryHtml(): Promise<PostHistoryItem[]> {
 }
 
 export async function fetchMyCollects(page: number): Promise<PageResult<CollectItem>> {
-	const res = await userGet('/api/users/me/collects?page=' + page + '&size=20')
+	const res = await userGet('/api/users/me/collects?page=' + page + '&size=30')
 	const data = res.getJSON('data')
 	const items: CollectItem[] = []
 	if (data == null) {
@@ -293,7 +293,7 @@ export async function fetchMyCollects(page: number): Promise<PageResult<CollectI
 }
 
 export async function fetchMyLikes(page: number): Promise<PageResult<VideoCard>> {
-	const res = await userGet('/api/users/me/likes?page=' + page + '&size=20')
+	const res = await userGet('/api/users/me/likes?page=' + page + '&size=30')
 	const data = res.getJSON('data')
 	if (data == null) {
 		return { items: [] as VideoCard[], page: 1, pages: 1, total: 0 } as PageResult<VideoCard>
@@ -306,7 +306,7 @@ export async function deleteHistory(ids: number[]): Promise<void> {
 }
 
 export async function fetchMyFollows(page: number): Promise<PageResult<FollowUser>> {
-	const res = await userGet('/api/users/me/follows?page=' + page + '&size=20')
+	const res = await userGet('/api/users/me/follows?page=' + page + '&size=30')
 	const data = res.getJSON('data')
 	const items: FollowUser[] = []
 	if (data == null) {

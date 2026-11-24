@@ -84,20 +84,22 @@
 				<!-- #endif -->
 				<template v-else>
 					<view class="quick-row">
-						<view class="quick-item" hover-class="quick-hover" @click="goSwipe">
-							<text class="quick-icon">刷</text>
-							<text class="quick-label">刷短剧</text>
-						</view>
-						<view class="quick-item" hover-class="quick-hover" @click="goRank">
-							<text class="quick-icon">榜</text>
+						<view class="quick-item quick-rank" hover-class="quick-hover" @click="goRank">
+							<view class="quick-badge quick-badge-rank">
+								<image class="quick-icon" src="/static/quick/rank.png" mode="aspectFit"></image>
+							</view>
 							<text class="quick-label">热播榜</text>
 						</view>
-						<view class="quick-item" hover-class="quick-hover" @click="goTopics">
-							<text class="quick-icon">辑</text>
+						<view class="quick-item quick-topic" hover-class="quick-hover" @click="goTopics">
+							<view class="quick-badge quick-badge-topic">
+								<image class="quick-icon" src="/static/quick/topic.png" mode="aspectFit"></image>
+							</view>
 							<text class="quick-label">专题</text>
 						</view>
-						<view class="quick-item quick-item-last" hover-class="quick-hover" @click="goLatest">
-							<text class="quick-icon">新</text>
+						<view class="quick-item quick-item-last quick-latest" hover-class="quick-hover" @click="goLatest">
+							<view class="quick-badge quick-badge-latest">
+								<image class="quick-icon" src="/static/quick/latest.png" mode="aspectFit"></image>
+							</view>
 							<text class="quick-label">更新</text>
 						</view>
 					</view>
@@ -105,8 +107,8 @@
 					<scroll-view v-if="banners.length > 0" class="banner-row" direction="horizontal" :show-scrollbar="false">
 						<view v-for="(b, i) in banners" :key="b.id" class="banner-item" @click="openVideo(b.videoId)">
 							<hg-cover :src="b.image" :width="bannerW" :height="bannerH" :radius="14"></hg-cover>
-							<view class="banner-mask">
-								<text class="banner-title" max-lines="1">{{b.title.length > 0 ? b.title : '精选推荐'}}</text>
+							<view v-if="b.title.length > 0" class="banner-mask">
+								<text class="banner-title" max-lines="1">{{b.title}}</text>
 							</view>
 						</view>
 					</scroll-view>
@@ -190,7 +192,7 @@
 </template>
 
 <script setup lang="uts">
-	import { fetchHome, fetchSearch } from '../../common/api/huangguo.uts'
+	import { fetchHome, fetchSearch, fetchVideoDetail } from '../../common/api/huangguo.uts'
 	import { ensureEndpointReady, onProbeProgress, isProbeDone, ProbeProgress } from '../../common/http/endpoint-probe.uts'
 	import { HomeBanner, VideoCard, CateRec, TopicLite } from '../../common/models/video.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
@@ -200,7 +202,8 @@
 	const winInfo = uni.getWindowInfo()
 	const winW = winInfo.windowWidth
 	const bannerW = winW - 32
-	const bannerH = Math.floor(bannerW * 0.5)
+	// Banner 实测 1920×640（3:1）；用 0.5 会裁掉左右（任意门标题在左侧）
+	const bannerH = Math.floor(bannerW / 3)
 	const bottomGapStyle = 'height:' + TAB_BOTTOM_GAP + 'px'
 	const statusSpacerStyle = 'height:' + winInfo.statusBarHeight + 'px'
 	const brandFontStyle = ref(fontStyle(28))
@@ -273,10 +276,6 @@
 		uni.navigateTo({
 			url: '/pages/list/list?mode=latest&title=' + encodeURIComponent('最近更新')
 		})
-	}
-
-	function goSwipe() {
-		uni.switchTab({ url: '/pages/swipe/swipe' })
 	}
 
 	function goTopics() {
@@ -360,6 +359,96 @@
 		}
 	}
 
+	function findCardTitle(cards: VideoCard[], videoId: string): string {
+		for (let i = 0; i < cards.length; i++) {
+			if (cards[i].id == videoId) {
+				return cards[i].title
+			}
+		}
+		return ''
+	}
+
+	function lookupBannerTitle(
+		videoId: string,
+		featuredList: VideoCard[],
+		latestList: VideoCard[],
+		cates: CateRec[]
+	): string {
+		let t = findCardTitle(featuredList, videoId)
+		if (t.length > 0) {
+			return t
+		}
+		t = findCardTitle(latestList, videoId)
+		if (t.length > 0) {
+			return t
+		}
+		for (let i = 0; i < cates.length; i++) {
+			t = findCardTitle(cates[i].videos, videoId)
+			if (t.length > 0) {
+				return t
+			}
+		}
+		return ''
+	}
+
+	function fillBannerTitlesLocal(
+		list: HomeBanner[],
+		featuredList: VideoCard[],
+		latestList: VideoCard[],
+		cates: CateRec[]
+	): HomeBanner[] {
+		const out: HomeBanner[] = [] as HomeBanner[]
+		for (let i = 0; i < list.length; i++) {
+			const b = list[i]
+			let title = b.title
+			if (title.length == 0) {
+				title = lookupBannerTitle(b.videoId, featuredList, latestList, cates)
+			}
+			out.push({
+				id: b.id,
+				videoId: b.videoId,
+				title: title,
+				image: b.image,
+				score: b.score,
+				desc: b.desc
+			} as HomeBanner)
+		}
+		return out
+	}
+
+	// 本地列表对不上的 Banner，再拉详情补剧名（不挡首屏）
+	async function fillBannerTitlesRemote(list: HomeBanner[]) {
+		const need: number[] = [] as number[]
+		for (let i = 0; i < list.length; i++) {
+			if (list[i].title.length == 0 && list[i].videoId.length > 0 && list[i].videoId != '0') {
+				need.push(i)
+			}
+		}
+		if (need.length == 0) {
+			return
+		}
+		const next = list.slice(0)
+		for (let n = 0; n < need.length; n++) {
+			const idx = need[n]
+			try {
+				const detail = await fetchVideoDetail(next[idx].videoId)
+				if (detail.title.length > 0) {
+					next[idx] = {
+						id: next[idx].id,
+						videoId: next[idx].videoId,
+						title: detail.title,
+						image: next[idx].image,
+						score: next[idx].score,
+						desc: next[idx].desc
+					} as HomeBanner
+				}
+			} catch (e) {
+				console.log('[home] banner title fail ' + next[idx].videoId + ' ' + e)
+			}
+		}
+		banners.value = next
+	}
+
 	async function reload() {
 		loading.value = true
 		errorText.value = ''
@@ -368,7 +457,6 @@
 			await ensureEndpointReady()
 			loadHint.value = '加载首页…'
 			const data = await fetchHome()
-			banners.value = data.banners
 			featured.value = data.featured
 			latest.value = data.latest
 			const cates: CateRec[] = [] as CateRec[]
@@ -381,6 +469,9 @@
 			}
 			cateRec.value = cates
 			topicRec.value = data.topicRec
+			const filled = fillBannerTitlesLocal(data.banners, data.featured, data.latest, cates)
+			banners.value = filled
+			fillBannerTitlesRemote(filled)
 		} catch (e) {
 			errorText.value = '首页加载失败，点击重试'
 			console.log('[home] fail ' + e)
@@ -511,20 +602,35 @@
 
 	.quick-row {
 		flex-direction: row;
-		margin-bottom: 16px;
+		margin-bottom: 18px;
 	}
 
 	.quick-item {
 		flex: 1;
-		height: 64px;
-		margin-right: 10px;
-		background-color: #1A1D26;
-		border-radius: 12px;
+		flex-direction: row;
+		align-items: center;
+		padding: 12px 10px;
+		margin-right: 8px;
+		background-color: #181B22;
+		border-radius: 14px;
 		border-width: 1px;
 		border-style: solid;
 		border-color: #2A2E38;
-		align-items: center;
-		justify-content: center;
+	}
+
+	.quick-rank {
+		background-color: #1C1416;
+		border-color: #3A2428;
+	}
+
+	.quick-topic {
+		background-color: #171A22;
+		border-color: #2A2E38;
+	}
+
+	.quick-latest {
+		background-color: #171C1A;
+		border-color: #2A3430;
 	}
 
 	.quick-item-last {
@@ -532,19 +638,39 @@
 	}
 
 	.quick-hover {
+		opacity: 0.88;
+	}
+
+	.quick-badge {
+		width: 32px;
+		height: 32px;
+		border-radius: 10px;
+		align-items: center;
+		justify-content: center;
+		margin-right: 8px;
+	}
+
+	.quick-badge-rank {
+		background-color: #2A181A;
+	}
+
+	.quick-badge-topic {
 		background-color: #22262F;
 	}
 
+	.quick-badge-latest {
+		background-color: #1E2A24;
+	}
+
 	.quick-icon {
-		color: #E8C27A;
-		font-size: 15px;
-		font-weight: bold;
+		width: 20px;
+		height: 20px;
 	}
 
 	.quick-label {
-		margin-top: 4px;
-		color: #C8CCD3;
-		font-size: 12px;
+		color: #E8EAEE;
+		font-size: 13px;
+		font-weight: bold;
 	}
 
 	.banner-row {
@@ -598,7 +724,8 @@
 	}
 
 	.row {
-		height: 210px;
+		/* 封面 120×160（3:4）+ 双行标题/副标题 */
+		height: 248px;
 		flex-direction: row;
 	}
 

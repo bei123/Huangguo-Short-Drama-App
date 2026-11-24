@@ -24,6 +24,8 @@
 <script setup lang="uts">
 	import { fetchMyMessages, readAllMessages } from '../../common/api/interact.uts'
 	import { MessageItem } from '../../common/models/extra.uts'
+	import { ensureEndpointReady } from '../../common/http/endpoint-probe.uts'
+	import { isLoggedIn } from '../../common/auth/session.uts'
 
 	const loading = ref(true)
 	const items = ref<MessageItem[]>([] as MessageItem[])
@@ -33,6 +35,10 @@
 	async function reload() {
 		loading.value = true
 		try {
+			await ensureEndpointReady()
+			if (!isLoggedIn()) {
+				return
+			}
 			const res = await fetchMyMessages(1)
 			items.value = res.items
 			page.value = res.page
