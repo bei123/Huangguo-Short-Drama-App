@@ -2,8 +2,8 @@
 	"name": "黄果短剧",
 	"appid": "__UNI__1D67323",
 	"description": "黄果短剧 Android 客户端（浏览/搜索/播放）",
-	"versionName": "1.0.9",
-	"versionCode": "109",
+	"versionName": "1.0.10",
+	"versionCode": "110",
 	"uni-app-x": {
 		"vapor": true,
 		"styleIsolationVersion": "2",
@@ -58,7 +58,7 @@
 				"default": {}
 			},
 			"abiFilters": [
-				"armeabi-v7a"
+				"arm64-v8a"
 			],
 			"permissions": [
 				"<uses-permission android:name=\"android.permission.VIBRATE\"/>"
