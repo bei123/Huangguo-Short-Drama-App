@@ -137,7 +137,7 @@
 <script setup lang="uts">
 	import { isLoggedIn, getUser, HgUser } from '../../common/auth/session.uts'
 	import { fetchMe, logout } from '../../common/api/account.uts'
-	import { fetchUnreadCount } from '../../common/api/interact.uts'
+	import { fetchUnreadCount, prefetchMyHistory } from '../../common/api/interact.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex, uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
@@ -343,6 +343,10 @@
 		} catch (_) {
 			unread.value = 0
 		}
+		// 稍后再预热，避免和刚进「我的」的 me/未读抢 user 队列；点进历史也能插队
+		setTimeout(() => {
+			prefetchMyHistory()
+		}, 800)
 	}
 
 	function requireLogin(): boolean {

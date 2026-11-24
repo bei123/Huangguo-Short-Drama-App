@@ -113,8 +113,52 @@ export async function visitVideo(id: string): Promise<void> {
 	} catch (_) { }
 }
 
+/** 首屏缓存：再次进入历史页可先秒开 */
+let historyPage1Cache: PageResult<HistoryItem> | null = null
+let historyPage1At: number = 0
+const HISTORY_CACHE_TTL_MS: number = 3 * 60 * 1000
+let historyPrefetching: boolean = false
+
+export function peekMyHistoryCache(): PageResult<HistoryItem> | null {
+	if (historyPage1Cache == null) {
+		return null
+	}
+	if ((Date.now() - historyPage1At) > HISTORY_CACHE_TTL_MS) {
+		return null
+	}
+	return historyPage1Cache
+}
+
+function rememberHistoryPage1(res: PageResult<HistoryItem>) {
+	historyPage1Cache = {
+		items: res.items.slice(0),
+		page: res.page,
+		pages: res.pages,
+		total: res.total
+	} as PageResult<HistoryItem>
+	historyPage1At = Date.now()
+}
+
+/** 我的页预热：不挡 UI，填满缓存供历史页秒开 */
+export function prefetchMyHistory(): void {
+	if (!isLoggedIn() || historyPrefetching) {
+		return
+	}
+	if (peekMyHistoryCache() != null) {
+		return
+	}
+	historyPrefetching = true
+	fetchMyHistory(1).then((_: PageResult<HistoryItem>) => {
+		historyPrefetching = false
+	}).catch((e: any) => {
+		historyPrefetching = false
+		console.log('[history] prefetch fail ' + e)
+	})
+}
+
 export async function fetchMyHistory(page: number): Promise<PageResult<HistoryItem>> {
-	const res = await userGet('/api/users/me/history?page=' + page + '&size=30')
+	// 首屏 20 条够用；过大响应体经 edge 加解密更慢
+	const res = await userGet('/api/users/me/history?page=' + page + '&size=20')
 	const data = res.getJSON('data')
 	const items: HistoryItem[] = []
 	if (data == null) {
@@ -139,7 +183,11 @@ export async function fetchMyHistory(page: number): Promise<PageResult<HistoryIt
 		}
 	}
 	const meta = parsePagination(data!, page, items.length)
-	return { items: items, page: meta.page, pages: meta.pages, total: meta.total } as PageResult<HistoryItem>
+	const out = { items: items, page: meta.page, pages: meta.pages, total: meta.total } as PageResult<HistoryItem>
+	if (page == 1) {
+		rememberHistoryPage1(out)
+	}
+	return out
 }
 
 function attrValue(chunk: string, attr: string): string {

@@ -40,7 +40,14 @@
 </template>
 
 <script setup lang="uts">
-	import { fetchMyHistory, fetchPostHistoryHtml, fetchMyCollects, fetchMyLikes, fetchMyFollows } from '../../common/api/interact.uts'
+	import {
+		fetchMyHistory,
+		fetchPostHistoryHtml,
+		fetchMyCollects,
+		fetchMyLikes,
+		fetchMyFollows,
+		peekMyHistoryCache
+	} from '../../common/api/interact.uts'
 	import { HistoryItem, PostHistoryItem } from '../../common/models/extra.uts'
 	import { ensureEndpointReady } from '../../common/http/endpoint-probe.uts'
 	import { isLoggedIn } from '../../common/auth/session.uts'
@@ -152,31 +159,43 @@
 		filterHistory()
 	}
 
-	async function loadHistoryFast(): Promise<void> {
-		// 旧逻辑会串行拉最多 20 页，极慢；改为首屏只拉第 1 页，图文并行，其余上滑再载
-		page.value = 1
-		pages.value = 1
-		videoHistory.value = [] as HistoryItem[]
-		postHistory.value = [] as PostHistoryItem[]
-
-		const histTask = fetchMyHistory(1)
-		const postTask = fetchPostHistoryHtml()
-
-		const first = await histTask
-		videoHistory.value = first.items.slice(0)
-		page.value = first.page
-		pages.value = first.pages > 0 ? first.pages : 1
-		filterHistory()
-		// 视频已可展示，图文稍后合并，避免 HTML 拖慢首屏
-		loading.value = false
-
+	async function loadChiguaHtml(): Promise<void> {
 		try {
-			postHistory.value = await postTask
+			postHistory.value = await fetchPostHistoryHtml()
 		} catch (e) {
 			console.log('[history] chigua html fail ' + e)
 			postHistory.value = [] as PostHistoryItem[]
 		}
 		filterHistory()
+	}
+
+	async function loadHistoryFast(): Promise<void> {
+		// user 档 edge 串行：图文 HTML(~90KB) 绝不能和 JSON 抢队，否则首屏被拖慢
+		page.value = 1
+		pages.value = 1
+		postHistory.value = [] as PostHistoryItem[]
+
+		// 有缓存先秒开，再后台刷新
+		const cached = peekMyHistoryCache()
+		if (cached != null) {
+			videoHistory.value = cached.items.slice(0)
+			page.value = cached.page
+			pages.value = cached.pages > 0 ? cached.pages : 1
+			filterHistory()
+			loading.value = false
+		} else {
+			videoHistory.value = [] as HistoryItem[]
+		}
+
+		const first = await fetchMyHistory(1)
+		videoHistory.value = first.items.slice(0)
+		page.value = first.page
+		pages.value = first.pages > 0 ? first.pages : 1
+		filterHistory()
+		loading.value = false
+
+		// 视频出完后再拉图文，避免占 user 队列
+		loadChiguaHtml()
 	}
 
 	async function loadMoreHistory(): Promise<void> {
