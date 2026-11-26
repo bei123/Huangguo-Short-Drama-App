@@ -137,6 +137,11 @@ public class DxCrypto {
 		guard let u = URL(string: url) else {
 			fatalError("bad image url")
 		}
+		try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
+		let key = String(url.hashValue, radix: 16)
+		if let hit = findCachedCover(cacheDir, key) {
+			return hit
+		}
 		var req = URLRequest(url: u, timeoutInterval: 25)
 		req.setValue("https://huangguoai.com/", forHTTPHeaderField: "Referer")
 		req.setValue("HuangguoAndroid/1.0", forHTTPHeaderField: "User-Agent")
@@ -157,11 +162,23 @@ public class DxCrypto {
 		}
 		let plain = try! decryptImageBytesSmart(raw)
 		let dir = (cacheDir as NSString)
-		try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
-		let name = "hg_\(String(url.hashValue, radix: 16))_\(Int(Date().timeIntervalSince1970 * 1000))\(imageExt(plain))"
-		let path = dir.appendingPathComponent(name)
+		let path = dir.appendingPathComponent("hg_\(key)\(imageExt(plain))")
 		try! plain.write(to: URL(fileURLWithPath: path))
 		return path
+	}
+
+	private static func findCachedCover(_ cacheDir: String, _ key: String) -> String? {
+		let exts = [".jpg", ".png", ".webp", ".gif"]
+		let fm = FileManager.default
+		for ext in exts {
+			let path = (cacheDir as NSString).appendingPathComponent("hg_\(key)\(ext)")
+			if let attrs = try? fm.attributesOfItem(atPath: path),
+			   let size = attrs[.size] as? NSNumber,
+			   size.intValue > 16 {
+				return path
+			}
+		}
+		return nil
 	}
 
 	public static func stdB64EncodeUtf8(_ text: String) -> String {

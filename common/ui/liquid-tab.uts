@@ -55,10 +55,13 @@ export function installLiquidTabBar(): void {
 		}
 		openTab(TAB_URLS[i])
 	})
+	const firstAttach = !attached
 	attached = true
-
-	setTimeout(hideSystemTabBar, 120)
-	setTimeout(hideSystemTabBar, 500)
+	// 仅首次挂载补两次 hide；onShow 重入不再叠定时器
+	if (firstAttach) {
+		setTimeout(hideSystemTabBar, 120)
+		setTimeout(hideSystemTabBar, 500)
+	}
 	// #endif
 }
 

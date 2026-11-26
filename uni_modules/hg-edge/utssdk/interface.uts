@@ -29,7 +29,9 @@ export type RandomHex32 = () => string
 export type ClearEdgeSessions = () => void
 
 /**
- * iOS Dynamic Type：系统 body 文本样式 pointSize（约 17 为默认）
- * 非 iOS 返回 17
+ * 系统等效正文字号（约 17 为默认）
+ * - iOS：Dynamic Type body.pointSize
+ * - Android：Configuration.fontScale × 17
+ * - 其它：17
  */
 export type BodyPointSize = () => number

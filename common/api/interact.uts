@@ -418,9 +418,13 @@ export async function readAllMessages(): Promise<void> {
 	await userPost('/api/users/me/messages/read-all', '{}')
 }
 
-export async function fetchComments(videoId: string, page: number, size: number = 20): Promise<PageResult<CommentItem>> {
+/** ep>0 时按集过滤；接口返回 data.ep，评论与发布都按集隔离 */
+export async function fetchComments(videoId: string, page: number, size: number = 20, ep: number = 0): Promise<PageResult<CommentItem>> {
 	const sz = size > 0 ? Math.floor(size) : 20
-	const path = '/api/videos/' + encodeURIComponent(videoId) + '/comments?page=' + page + '&size=' + sz
+	let path = '/api/videos/' + encodeURIComponent(videoId) + '/comments?page=' + page + '&size=' + sz
+	if (ep > 0) {
+		path = path + '&ep=' + Math.floor(ep)
+	}
 	const res = await dynamicGet(path)
 	const data = res.getJSON('data')
 	const items: CommentItem[] = []

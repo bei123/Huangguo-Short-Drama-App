@@ -1,8 +1,5 @@
 <template>
-	<!-- #ifdef APP -->
-	<scroll-view class="page" direction="vertical">
-	<!-- #endif -->
-		<view class="page-inner">
+	<view class="page">
 			<!-- #ifdef APP-IOS -->
 			<hg-skeleton v-if="loading" kind="detail"></hg-skeleton>
 			<!-- #endif -->
@@ -15,50 +12,98 @@
 				<text class="state-text">{{errorText}}</text>
 				<text class="state-action">点击重试</text>
 			</view>
-			<template v-else-if="detail != null">
-				<view class="player-wrap" :style="{ height: playerH + 'px' }">
-					<video
-						v-if="playUrl.length > 0"
-						id="detailPlayer"
-						class="player"
-						:style="{ height: playerH + 'px' }"
-						:src="playUrl"
-						:autoplay="true"
-						:controls="true"
-						:show-center-play-btn="true"
-						:show-play-btn="true"
-						:show-fullscreen-btn="true"
-						:show-progress="true"
-						:show-loading="true"
-						:enable-progress-gesture="true"
-						object-fit="contain"
-						@play="onVideoPlay"
-						@pause="onVideoPause"
-						@ended="onVideoPause"
-						@error="onPlayError"
-					></video>
-					<view v-else class="player-placeholder" :style="{ height: playerH + 'px' }">
-						<hg-cover :src="detail!.cover" :width="playerW" :height="playerH" :radius="0"></hg-cover>
-						<text class="player-tip">{{playTip}}</text>
+			<view v-else-if="detail != null" class="main">
+				<!-- 播放器固定顶部，不随下方内容滚动 -->
+				<view class="player-block">
+					<view class="player-wrap" :style="{ height: playerH + 'px' }">
+						<video
+							v-if="pageVisible && playUrl.length > 0"
+							:key="'detailPlayer-' + playerKey"
+							id="detailPlayer"
+							class="player"
+							:style="{ height: playerH + 'px' }"
+							:src="playUrl"
+							:autoplay="true"
+							:controls="true"
+							:show-center-play-btn="true"
+							:show-play-btn="true"
+							:show-fullscreen-btn="true"
+							:show-progress="false"
+							:show-loading="true"
+							:enable-progress-gesture="false"
+							object-fit="contain"
+							@play="onVideoPlay"
+							@pause="onVideoPause"
+							@ended="onVideoPause"
+							@error="onPlayError"
+							@timeupdate="onTimeUpdate"
+							@touchstart="onSpeedTouchStart"
+							@touchend="onSpeedTouchEnd"
+							@touchcancel="onSpeedTouchCancel"
+							@longpress="onLongPressSpeed"
+						></video>
+						<view v-else class="player-placeholder" :style="{ height: playerH + 'px' }">
+							<hg-cover :src="detail!.cover" :width="playerW" :height="playerH" :radius="0"></hg-cover>
+							<text class="player-tip">{{playTip}}</text>
+						</view>
+						<view v-if="speedBoost" class="speed-badge">
+							<text class="speed-badge-text">2×</text>
+						</view>
+						<!-- 拖动预览：迷你 video 跟手 seek，画面随进度变（封面只作垫底） -->
+						<view v-if="seeking" class="seek-preview" :style="seekPreviewStyle">
+							<view class="seek-preview-frame">
+								<hg-cover :src="detail!.cover" :width="PREVIEW_W" :height="PREVIEW_H" :radius="6"></hg-cover>
+								<video
+									id="detailSeekPreview"
+									class="seek-preview-video"
+									:style="'width:' + PREVIEW_W + 'px;height:' + PREVIEW_H + 'px'"
+									:src="playUrl"
+									:muted="true"
+									:controls="false"
+									:show-center-play-btn="false"
+									:show-play-btn="false"
+									:autoplay="false"
+									:enable-progress-gesture="false"
+									object-fit="cover"
+								></video>
+							</view>
+							<text class="seek-preview-time">{{seekPreviewTimeText}} / {{formatTime(playDuration)}}</text>
+						</view>
+						<!-- #ifdef APP-IOS -->
+						<view
+							v-if="playUrl.length > 0 && !videoPlaying && !speedBoost && !seeking"
+							class="center-play"
+							@click="tapCenterPlay"
+						>
+							<text class="center-play-icon">▶</text>
+						</view>
+						<!-- #endif -->
 					</view>
-					<!-- iOS 原生 controls 图标常缺失：叠一层可点的中心播放按钮 -->
-					<!-- #ifdef APP-IOS -->
+					<!-- 进度条始终占位：长按加速时不卸载，避免整页高度跳动 -->
 					<view
-						v-if="playUrl.length > 0 && !videoPlaying"
-						class="center-play"
-						@click="tapCenterPlay"
+						v-if="pageVisible && playUrl.length > 0"
+						class="prog-wrap"
+						:class="seeking ? 'prog-wrap-on' : ''"
+						@touchstart.stop="onProgStart"
+						@touchmove.stop="onProgMove"
+						@touchend.stop="onProgEnd"
+						@touchcancel.stop="onProgEnd"
 					>
-						<text class="center-play-icon">▶</text>
+						<view v-if="seeking" class="prog-times">
+							<text class="prog-time">{{seekPreviewTimeText}}</text>
+							<text class="prog-time">{{formatTime(playDuration)}}</text>
+						</view>
+						<view class="prog-track" :class="seeking ? 'prog-track-on' : ''">
+							<view class="prog-base" :class="seeking ? 'prog-base-on' : ''"></view>
+							<view class="prog-fill" :class="seeking ? 'prog-fill-on' : ''" :style="progFillStyle"></view>
+							<view v-if="seeking" class="prog-thumb" :style="progThumbStyle"></view>
+						</view>
 					</view>
-					<!-- #endif -->
 				</view>
 
-				<view class="info">
-					<text class="title" :style="titleFontStyle">{{detail!.title}}</text>
-					<text class="meta">评分 {{detail!.score > 0 ? detail!.score.toFixed(1) : '-'}} · {{detail!.isFinished ? '已完结' : '连载中'}} · {{detail!.episodeCount}}集</text>
-					<text class="meta">热度 {{formatCount(detail!.hot)}} · 点赞 {{formatCount(detail!.like)}} · 收藏 {{formatCount(detail!.collect)}}</text>
-					<text v-if="detail!.authorName.length > 0" class="meta author-link" @click="goAuthor">作者 {{detail!.authorName}} ›</text>
-
+				<!-- 标题 + 互动固定在播放器下；内容用 Tab 切换，评论即开即见 -->
+				<view class="header-strip">
+					<text class="title" :style="titleFontStyle" :max-lines="1">{{detail!.title}}</text>
 					<view class="act-row">
 						<view class="act" :class="liked ? 'act-on' : ''" hover-class="act-hover" @click="toggleLike">
 							<text class="act-text" :class="liked ? 'act-text-on' : ''">{{liked ? '已赞' : '点赞'}}</text>
@@ -66,14 +111,10 @@
 						<view class="act" :class="collected ? 'act-on' : ''" hover-class="act-hover" @click="toggleCollect">
 							<text class="act-text" :class="collected ? 'act-text-on' : ''">{{collected ? '已藏' : '收藏'}}</text>
 						</view>
-						<view class="act" :class="showRatePanel || myScore > 0 ? 'act-on' : ''" hover-class="act-hover" @click="openRate">
+						<view class="act act-last" :class="showRatePanel || myScore > 0 ? 'act-on' : ''" hover-class="act-hover" @click="openRate">
 							<text class="act-text" :class="showRatePanel || myScore > 0 ? 'act-text-on' : ''">{{myScore > 0 ? (myScore + '星') : '评分'}}</text>
 						</view>
-						<view class="act act-last" :class="showComments ? 'act-on' : ''" hover-class="act-hover" @click="showComments = !showComments">
-							<text class="act-text" :class="showComments ? 'act-text-on' : ''">评论</text>
-						</view>
 					</view>
-
 					<view v-if="showRatePanel" class="rate-panel">
 						<text class="rate-hint">轻点选择评分</text>
 						<view class="rate-stars">
@@ -86,83 +127,143 @@
 							>★</text>
 						</view>
 						<view class="rate-actions">
-							<text class="rate-cancel" @click="showRatePanel = false">取消</text>
+							<text class="rate-cancel" @click="cancelRate">取消</text>
 							<view class="rate-ok" @click="submitRate">
 								<text class="rate-ok-text">提交</text>
 							</view>
 						</view>
 					</view>
-
-					<view class="tags">
-						<text v-for="(t, i) in detail!.tags" :key="i" class="tag" @click="openTag(t)">{{t}}</text>
-					</view>
-
-					<text class="desc" :max-lines="descExpanded ? -1 : 3">{{detail!.description}}</text>
-					<text v-if="detail!.description.length > 60" class="desc-toggle" @click="descExpanded = !descExpanded">
-						{{descExpanded ? '收起' : '展开简介'}}
-					</text>
-				</view>
-
-				<view class="block">
-					<view class="ep-head">
-						<text class="block-title">选集</text>
-						<text class="ep-head-sub">第 {{currentEp}} 集</text>
-					</view>
-					<view class="ep-grid">
-						<view
-							v-for="ep in detail!.episodes"
-							:key="ep.epNum"
-							class="ep-item"
-							:class="ep.epNum == currentEp ? 'ep-active' : (ep.locked ? 'ep-locked' : '')"
-							@click="selectEp(ep.epNum, ep.locked)"
-						>
-							<text
-								class="ep-text"
-								:class="ep.epNum == currentEp ? 'ep-text-on' : (ep.locked ? 'ep-text-locked' : '')"
-							>{{ep.locked ? ('锁' + ep.epNum) : ('' + ep.epNum)}}</text>
+					<view class="body-tabs">
+						<view class="body-tab" :class="bodyTab == 0 ? 'body-tab-on' : ''" hover-class="body-tab-press" @click="switchBodyTab(0)">
+							<text class="body-tab-text" :class="bodyTab == 0 ? 'body-tab-text-on' : ''">简介</text>
+						</view>
+						<view class="body-tab" :class="bodyTab == 1 ? 'body-tab-on' : ''" hover-class="body-tab-press" @click="switchBodyTab(1)">
+							<text class="body-tab-text" :class="bodyTab == 1 ? 'body-tab-text-on' : ''">选集</text>
+							<text class="body-tab-sub" :class="bodyTab == 1 ? 'body-tab-sub-on' : ''">{{currentEp}}</text>
+						</view>
+						<view class="body-tab" :class="bodyTab == 2 ? 'body-tab-on' : ''" hover-class="body-tab-press" @click="switchBodyTab(2)">
+							<text class="body-tab-text" :class="bodyTab == 2 ? 'body-tab-text-on' : ''">{{commentTabLabel}}</text>
 						</view>
 					</view>
 				</view>
 
-				<template v-if="showComments">
-					<view class="block">
-						<text class="block-title">评论</text>
-						<view class="comment-box">
-							<input class="comment-input" type="text" :value="commentText" placeholder="说点什么…" placeholder-style="color:#6F737A" @input="onCommentInput" />
-							<view class="comment-send" @click="sendComment">
-								<text class="comment-send-text">发送</text>
+				<view class="body-panel" :style="bodyPanelStyle">
+					<!-- #ifdef APP -->
+					<scroll-view
+						class="body-scroll"
+						direction="vertical"
+						:style="bodyScrollStyle"
+						@scrolltolower="onBodyScrollToLower"
+					>
+					<!-- #endif -->
+					<!-- #ifndef APP -->
+					<view class="body-scroll" :style="bodyScrollStyle">
+					<!-- #endif -->
+
+					<template v-if="bodyTab == 0">
+						<view class="info">
+							<text class="meta">评分 {{detail!.score > 0 ? detail!.score.toFixed(1) : '-'}} · {{detail!.isFinished ? '已完结' : '连载中'}} · {{detail!.episodeCount}}集</text>
+							<text class="meta">热度 {{formatCount(detail!.hot)}} · 点赞 {{formatCount(detail!.like)}} · 收藏 {{formatCount(detail!.collect)}}</text>
+							<text v-if="detail!.authorName.length > 0" class="meta author-link" @click="goAuthor">作者 {{detail!.authorName}} ›</text>
+							<view class="tags">
+								<text v-for="(t, i) in detail!.tags" :key="i" class="tag" @click="openTag(t)">{{t}}</text>
+							</view>
+							<text class="desc" :max-lines="descExpanded ? -1 : 6">{{detail!.description}}</text>
+							<text v-if="detail!.description.length > 60" class="desc-toggle" @click="descExpanded = !descExpanded">
+								{{descExpanded ? '收起' : '展开简介'}}
+							</text>
+						</view>
+						<view v-if="related.length > 0" class="block">
+							<text class="block-title">相关推荐</text>
+							<scroll-view class="rel-row" direction="horizontal" :show-scrollbar="false">
+								<hg-video-card
+									v-for="item in related"
+									:key="item.id"
+									:id="item.id"
+									:title="item.title"
+									:cover="item.cover"
+									:score="item.score"
+									:badge="item.badge"
+									:sub="item.episodeCount + '集'"
+								></hg-video-card>
+							</scroll-view>
+						</view>
+						<view class="bottom-space"></view>
+					</template>
+
+					<template v-else-if="bodyTab == 1">
+						<view class="block">
+							<view class="ep-head">
+								<text class="block-title">选集</text>
+								<text class="ep-head-sub">第 {{currentEp}} 集</text>
+							</view>
+							<view class="ep-grid">
+								<view
+									v-for="ep in detail!.episodes"
+									:key="ep.epNum"
+									class="ep-item"
+									:class="ep.epNum == currentEp ? 'ep-active' : (ep.locked ? 'ep-locked' : '')"
+									@click="selectEp(ep.epNum, ep.locked)"
+								>
+									<text
+										class="ep-text"
+										:class="ep.epNum == currentEp ? 'ep-text-on' : (ep.locked ? 'ep-text-locked' : '')"
+									>{{ep.locked ? ('锁' + ep.epNum) : ('' + ep.epNum)}}</text>
+								</view>
 							</view>
 						</view>
-						<view v-for="c in comments" :key="c.id" class="comment-item">
-							<text class="comment-user">{{c.userName}}</text>
-							<text class="comment-text">{{c.text}}</text>
-							<text class="comment-time">{{c.createdAt}}</text>
-						</view>
-						<text v-if="comments.length == 0" class="footer-tip">暂无评论</text>
-					</view>
-				</template>
+						<view class="bottom-space"></view>
+					</template>
 
-				<view v-if="related.length > 0" class="block">
-					<text class="block-title">相关推荐</text>
-					<scroll-view class="rel-row" direction="horizontal" :show-scrollbar="false">
-						<hg-video-card
-							v-for="item in related"
-							:key="item.id"
-							:id="item.id"
-							:title="item.title"
-							:cover="item.cover"
-							:score="item.score"
-							:badge="item.badge"
-							:sub="item.episodeCount + '集'"
-						></hg-video-card>
+					<template v-else>
+						<view class="cmt-head">
+							<text class="cmt-head-text">第 {{currentEp}} 集评论</text>
+						</view>
+						<view v-if="commentLoading && comments.length == 0" class="cmt-empty">
+							<text class="cmt-empty-text">加载中…</text>
+						</view>
+						<view v-else-if="comments.length == 0" class="cmt-empty">
+							<text class="cmt-empty-text">本集暂无评论</text>
+						</view>
+						<view v-for="c in comments" :key="c.id" class="cmt-item">
+							<text class="cmt-user">{{c.userName.length > 0 ? c.userName : '用户'}}</text>
+							<text class="cmt-text">{{c.text}}</text>
+							<text class="cmt-time">{{c.createdAt}}</text>
+						</view>
+						<view v-if="commentLoadingMore" class="cmt-foot">
+							<text class="cmt-foot-text">加载更多…</text>
+						</view>
+						<view v-else-if="comments.length > 0 && commentPage >= commentPages" class="cmt-foot">
+							<text class="cmt-foot-text">没有更多了</text>
+						</view>
+						<view class="cmt-scroll-pad"></view>
+					</template>
+
+					<!-- #ifdef APP -->
 					</scroll-view>
+					<!-- #endif -->
+					<!-- #ifndef APP -->
+					</view>
+					<!-- #endif -->
+
+					<view v-if="bodyTab == 2" class="cmt-input-row" :style="cmtInputPadStyle">
+						<input
+							class="cmt-input"
+							type="text"
+							:value="commentText"
+							placeholder="说点什么…"
+							placeholder-style="color:#6F737A"
+							confirm-type="send"
+							@input="onCommentInput"
+							@confirm="sendComment"
+						/>
+						<view class="cmt-send" hover-class="cmt-send-press" @click="sendComment">
+							<text class="cmt-send-text">发送</text>
+						</view>
+					</view>
 				</view>
-			</template>
-			<view class="bottom-space"></view>
-		</view>
-	<!-- #ifdef APP -->
-	</scroll-view>
-	<!-- #endif -->
+			</view>
+	</view>
 </template>
 
 <script setup lang="uts">
@@ -171,16 +272,48 @@
 		collectVideo, likeVideo, rateVideo, syncHistory, visitVideo,
 		fetchComments, postComment, fetchRelated
 	} from '../../common/api/interact.uts'
-	import { VideoDetail, VideoCard } from '../../common/models/video.uts'
+	import { VideoDetail, VideoCard, PlaybackInfo } from '../../common/models/video.uts'
 	import { CommentItem } from '../../common/models/extra.uts'
 	import { isLoggedIn, getUser } from '../../common/auth/session.uts'
 	import { fetchMe } from '../../common/api/account.uts'
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
+	import { getWindowWidth, getWindowHeight, getSafeBottom, refreshLayout } from '../../common/ui/layout.uts'
 	import { uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
 
-	const playerW = uni.getWindowInfo().windowWidth
-	const playerH = Math.floor(playerW * 0.56)
-	const titleFontStyle = ref(fontStyle(20))
+	refreshLayout()
+	const playerW = ref(getWindowWidth())
+	const playerH = ref(Math.floor(playerW.value * 0.56))
+	/** 进度条 / 标题条 / Tab 条；scroll-view 在 App 上需明确像素高才能滚 */
+	const PROG_STRIP_H = 44
+	const HEADER_STRIP_H = 118
+	const CMT_INPUT_H = 56
+	const bodyPanelStyle = ref('')
+	const bodyScrollStyle = ref('')
+	const titleFontStyle = ref(fontStyle(18))
+	let cmtInputPad = Math.max(12, getSafeBottom())
+	const cmtInputPadStyle = ref('padding-bottom:' + cmtInputPad + 'px')
+	/** 0简介 1选集 2评论；默认选集，进详情就能换集 */
+	const bodyTab = ref(1)
+	const showRatePanel = ref(false)
+
+	function syncDetailLayout() {
+		refreshLayout()
+		refreshTypeScale()
+		playerW.value = getWindowWidth()
+		playerH.value = Math.floor(playerW.value * 0.56)
+		const winH = getWindowHeight()
+		cmtInputPad = Math.max(12, getSafeBottom())
+		cmtInputPadStyle.value = 'padding-bottom:' + cmtInputPad + 'px'
+		const rateExtra = showRatePanel.value ? 120 : 0
+		const panelH = winH - playerH.value - PROG_STRIP_H - HEADER_STRIP_H - rateExtra
+		const panel = panelH > 160 ? panelH : 160
+		bodyPanelStyle.value = 'height:' + panel + 'px'
+		const inputH = bodyTab.value == 2 ? (CMT_INPUT_H + cmtInputPad) : 0
+		const scrollH = panel - inputH
+		bodyScrollStyle.value = 'height:' + (scrollH > 120 ? scrollH : 120) + 'px'
+		titleFontStyle.value = fontStyle(18)
+	}
+	syncDetailLayout()
 	const videoId = ref('')
 	const preferEp = ref(0)
 	const loading = ref(true)
@@ -192,17 +325,91 @@
 	const expiresAt = ref(0)
 	const playLoading = ref(false)
 	const videoPlaying = ref(false)
+	/** 切集 / 离页时递增，强制重建原生 video */
+	const playerKey = ref(0)
+	/** 页可见；hide 时卸掉 video，彻底销毁 */
+	const pageVisible = ref(true)
+	/** hide 前是否在播，show 后自动续 */
+	let resumeOnShow = false
+	const speedBoost = ref(false)
+	const SPEED_FAST = 2.0
+	const SPEED_NORMAL = 1.0
+	const SPEED_HOLD_MS = 380
+	let speedGestureActive = false
+	let speedLongPressFired = false
+	let speedHoldTimer: number = 0
+
+	const playCurrent = ref(0)
+	const playDuration = ref(0)
+	const seeking = ref(false)
+	const seekRatio = ref(0)
+	const PROG_PAD = 16
+	const PROG_THUMB = 12
+	/** 详情播放器偏横版矮窗，预览用 16:9 小图 */
+	const PREVIEW_W = 120
+	const PREVIEW_H = 68
+	let wasPlayingBeforeSeek = false
+	const seekUiRatio = ref(0)
+	const seekPreviewLeft = ref(0)
+	const seekPreviewTimeText = ref('0:00')
+	const LIVE_SEEK_GAP_MS = 90
+	const LIVE_SEEK_MIN_DT = 0.28
+	let lastLiveSeekMs = 0
+	let lastLiveSeekT = -1
+	let pendingSeekT = -1
+	let liveSeekTimer: number = 0
+
+	const displayRatio = computed((): number => {
+		if (seeking.value) {
+			return seekUiRatio.value
+		}
+		if (playDuration.value <= 0) {
+			return 0
+		}
+		let r = playCurrent.value / playDuration.value
+		if (r < 0) {
+			r = 0
+		}
+		if (r > 1) {
+			r = 1
+		}
+		return r
+	})
+	const progFillStyle = computed((): string => {
+		return 'width:' + (displayRatio.value * 100) + '%'
+	})
+	const progThumbStyle = computed((): string => {
+		const trackW = playerW.value - PROG_PAD * 2
+		const x = displayRatio.value * trackW - PROG_THUMB / 2
+		return 'left:' + x + 'px'
+	})
+	const seekPreviewStyle = computed((): string => {
+		return 'transform:translateX(' + seekPreviewLeft.value + 'px)'
+	})
+
 	const liked = ref(false)
 	const collected = ref(false)
-	const showComments = ref(false)
-	const showRatePanel = ref(false)
 	const myScore = ref(0)
 	const pendingScore = ref(5)
 	const rateStars = [1, 2, 3, 4, 5]
 	const descExpanded = ref(false)
+	const COMMENT_PAGE_SIZE = 20
 	const commentText = ref('')
 	const comments = ref<CommentItem[]>([] as CommentItem[])
+	const commentTotal = ref(0)
+	const commentPage = ref(1)
+	const commentPages = ref(1)
+	const commentLoading = ref(false)
+	const commentLoadingMore = ref(false)
+	/** 当前列表对应的集号，切集后用于判断是否需重拉 */
+	const commentsEp = ref(0)
 	const related = ref<VideoCard[]>([] as VideoCard[])
+	const commentTabLabel = computed((): string => {
+		if (commentTotal.value > 0) {
+			return '评论 ' + commentTotal.value
+		}
+		return '评论'
+	})
 
 	function formatCount(n: number): string {
 		if (n >= 100000000) {
@@ -237,40 +444,100 @@
 	async function loadDetail() {
 		loading.value = true
 		errorText.value = ''
+		const vid = videoId.value
+		// 播放地址与详情并行；首屏不再串等 playback / fetchMe
+		const startGuess = preferEp.value > 0 ? Math.floor(preferEp.value) : 1
+		const playPrefetch = fetchPlayback(vid, startGuess).then((info: PlaybackInfo): PlaybackInfo | null => {
+			return info
+		}).catch((e: any): PlaybackInfo | null => {
+			console.log('[detail] playback prefetch fail ' + e)
+			return null
+		})
 		try {
-			const d = await fetchVideoDetail(videoId.value)
+			const d = await fetchVideoDetail(vid)
+			if (videoId.value != vid) {
+				return
+			}
 			detail.value = d
 			uni.setNavigationBarTitle({ title: d.title })
-			visitVideo(videoId.value)
-			if (isLoggedIn()) {
-				try {
-					await fetchMe()
-				} catch (_) { }
-			}
+			// 详情一到就出壳，播放器区自己转「获取播放地址」
+			loading.value = false
+			visitVideo(vid)
 			syncLocalState()
-			if (d.episodes.length > 0) {
-				let startEp = d.episodes[0].epNum
-				if (preferEp.value > 0) {
-					for (let i = 0; i < d.episodes.length; i++) {
-						if (d.episodes[i].epNum == preferEp.value && !d.episodes[i].locked) {
-							startEp = preferEp.value
-							break
-						}
+			if (isLoggedIn()) {
+				fetchMe().then((_) => {
+					if (videoId.value == vid) {
+						syncLocalState()
+					}
+				}).catch((_) => { })
+			}
+			fetchRelated(vid, 1).then((res) => {
+				if (videoId.value == vid) {
+					related.value = res.items
+				}
+			}).catch((_) => { })
+			if (bodyTab.value == 2) {
+				loadComments(true)
+			}
+			if (d.episodes.length == 0) {
+				return
+			}
+			let startEp = d.episodes[0].epNum
+			if (preferEp.value > 0) {
+				for (let i = 0; i < d.episodes.length; i++) {
+					if (d.episodes[i].epNum == preferEp.value && !d.episodes[i].locked) {
+						startEp = preferEp.value
+						break
 					}
 				}
-				await playEpisode(startEp, false)
 			}
-			fetchRelated(videoId.value, 1).then((res) => {
-				related.value = res.items
-			}).catch((_) => { })
-			fetchComments(videoId.value, 1, 50).then((res) => {
-				comments.value = res.items
-			}).catch((_) => { })
+			await applyPlayback(startEp, startGuess, playPrefetch)
 		} catch (e) {
 			errorText.value = '加载失败，点击重试'
 			console.log('[detail] fail ' + e)
-		} finally {
 			loading.value = false
+		}
+	}
+
+	/** 首屏：优先吃并行预取；切集仍走 playEpisode */
+	async function applyPlayback(startEp: number, guessedEp: number, prefetch: Promise<PlaybackInfo | null>) {
+		if (playLoading.value) {
+			return
+		}
+		playLoading.value = true
+		playTip.value = '获取播放地址…'
+		currentEp.value = startEp
+		destroyPlayer()
+		pageVisible.value = true
+		try {
+			let info: PlaybackInfo | null = null
+			if (startEp == guessedEp) {
+				info = await prefetch
+			}
+			if (info == null) {
+				info = await fetchPlayback(videoId.value, startEp)
+			}
+			if (currentEp.value != startEp) {
+				return
+			}
+			if (info == null) {
+				playUrl.value = ''
+				playTip.value = '播放失败'
+				return
+			}
+			playerKey.value = playerKey.value + 1
+			playUrl.value = info.url
+			expiresAt.value = info.expiresAt
+			playTip.value = ''
+			if (isLoggedIn()) {
+				syncHistory(videoId.value, startEp)
+			}
+		} catch (e) {
+			playUrl.value = ''
+			playTip.value = '播放失败'
+			uni.showToast({ title: '播放失败', icon: 'none' })
+		} finally {
+			playLoading.value = false
 		}
 	}
 
@@ -280,6 +547,341 @@
 			return
 		}
 		await playEpisode(ep, true)
+	}
+
+	function haptic(kind: string) {
+		try {
+			uni.vibrateShort({ type: kind })
+		} catch (_) { }
+	}
+
+	function formatTime(sec: number): string {
+		if (sec <= 0 || sec != sec) {
+			return '00:00'
+		}
+		const s = Math.floor(sec)
+		const m = Math.floor(s / 60)
+		const r = s % 60
+		const mm = m < 10 ? ('0' + m) : ('' + m)
+		const ss = r < 10 ? ('0' + r) : ('' + r)
+		return mm + ':' + ss
+	}
+
+	function clampSeekRatio(r: number): number {
+		if (r < 0) {
+			return 0
+		}
+		if (r > 1) {
+			return 1
+		}
+		return r
+	}
+
+	function syncSeekPreviewUi(r: number) {
+		const ratio = clampSeekRatio(r)
+		seekUiRatio.value = ratio
+		seekRatio.value = ratio
+		const trackW = playerW.value - PROG_PAD * 2
+		let left = PROG_PAD + ratio * trackW - PREVIEW_W / 2
+		const minL = PROG_PAD
+		const maxL = playerW.value - PROG_PAD - PREVIEW_W
+		if (left < minL) {
+			left = minL
+		}
+		if (left > maxL) {
+			left = maxL
+		}
+		seekPreviewLeft.value = left
+		seekPreviewTimeText.value = formatTime(ratio * playDuration.value)
+	}
+
+	function ratioFromPageX(pageX: number): number {
+		const left = PROG_PAD
+		const w = playerW.value - PROG_PAD * 2
+		if (w <= 0) {
+			return 0
+		}
+		let r = (pageX - left) / w
+		if (r < 0) {
+			r = 0
+		}
+		if (r > 1) {
+			r = 1
+		}
+		return r
+	}
+
+	function touchPageX(e: UniTouchEvent): number {
+		try {
+			if (e.touches.length > 0) {
+				return e.touches[0].pageX
+			}
+		} catch (_) { }
+		try {
+			if (e.changedTouches.length > 0) {
+				return e.changedTouches[0].pageX
+			}
+		} catch (_) { }
+		return 0
+	}
+
+	function clearLiveSeekTimer() {
+		if (liveSeekTimer != 0) {
+			try {
+				clearTimeout(liveSeekTimer)
+			} catch (_) { }
+			liveSeekTimer = 0
+		}
+	}
+
+	function resetProgress() {
+		clearLiveSeekTimer()
+		pendingSeekT = -1
+		lastLiveSeekT = -1
+		playCurrent.value = 0
+		playDuration.value = 0
+		seeking.value = false
+		seekRatio.value = 0
+		seekUiRatio.value = 0
+		wasPlayingBeforeSeek = false
+	}
+
+	function seekPreviewPlayer(t: number) {
+		try {
+			const ctx = uni.createVideoContext('detailSeekPreview')
+			ctx.seek(t)
+			ctx.pause()
+		} catch (_) { }
+	}
+
+	function doLiveSeek(t: number) {
+		lastLiveSeekMs = Date.now()
+		lastLiveSeekT = t
+		pendingSeekT = -1
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.seek(t)
+		} catch (err) {
+			console.log('[detail] liveSeek ' + err)
+		}
+		seekPreviewPlayer(t)
+	}
+
+	function queueLiveSeek(t: number, force: boolean) {
+		pendingSeekT = t
+		if (force) {
+			clearLiveSeekTimer()
+			doLiveSeek(t)
+			return
+		}
+		const now = Date.now()
+		const dtOk = lastLiveSeekT < 0 || Math.abs(t - lastLiveSeekT) >= LIVE_SEEK_MIN_DT
+		const timeOk = now - lastLiveSeekMs >= LIVE_SEEK_GAP_MS
+		if (dtOk && timeOk) {
+			clearLiveSeekTimer()
+			doLiveSeek(t)
+			return
+		}
+		if (liveSeekTimer == 0) {
+			const wait = Math.max(16, LIVE_SEEK_GAP_MS - (now - lastLiveSeekMs))
+			liveSeekTimer = setTimeout(() => {
+				liveSeekTimer = 0
+				if (!seeking.value || pendingSeekT < 0) {
+					return
+				}
+				doLiveSeek(pendingSeekT)
+			}, wait) as number
+		}
+	}
+
+	function onProgStart(e: UniTouchEvent) {
+		if (playDuration.value <= 0 || speedBoost.value) {
+			return
+		}
+		clearSpeedHoldTimer()
+		speedGestureActive = false
+		wasPlayingBeforeSeek = videoPlaying.value
+		seeking.value = true
+		lastLiveSeekMs = 0
+		lastLiveSeekT = -1
+		pendingSeekT = -1
+		clearLiveSeekTimer()
+		const r = ratioFromPageX(touchPageX(e))
+		syncSeekPreviewUi(r)
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.pause()
+		} catch (_) { }
+		const t0 = r * playDuration.value
+		queueLiveSeek(t0, true)
+		// 预览 video 刚挂载，稍后再 seek 一次才能出帧
+		setTimeout(() => {
+			if (seeking.value) {
+				seekPreviewPlayer(seekUiRatio.value * playDuration.value)
+			}
+		}, 80)
+		haptic('light')
+	}
+
+	function onProgMove(e: UniTouchEvent) {
+		if (!seeking.value) {
+			return
+		}
+		const r = ratioFromPageX(touchPageX(e))
+		syncSeekPreviewUi(r)
+		queueLiveSeek(r * playDuration.value, false)
+	}
+
+	function onProgEnd(e: UniTouchEvent) {
+		if (!seeking.value) {
+			return
+		}
+		clearLiveSeekTimer()
+		const r = clampSeekRatio(ratioFromPageX(touchPageX(e)))
+		syncSeekPreviewUi(r)
+		const t = r * playDuration.value
+		playCurrent.value = t
+		pendingSeekT = -1
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.seek(t)
+			if (wasPlayingBeforeSeek) {
+				ctx.play()
+				videoPlaying.value = true
+			}
+		} catch (err) {
+			console.log('[detail] seek ' + err)
+		}
+		seeking.value = false
+		wasPlayingBeforeSeek = false
+	}
+
+	function onTimeUpdate(e: UniVideoTimeUpdateEvent) {
+		if (seeking.value) {
+			return
+		}
+		try {
+			playCurrent.value = e.detail.currentTime
+			if (e.detail.duration > 0) {
+				playDuration.value = e.detail.duration
+			}
+		} catch (_) { }
+	}
+
+	function setPlaybackRate(rate: number) {
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.playbackRate(rate)
+		} catch (e) {
+			console.log('[detail] rate ' + e)
+		}
+	}
+
+	/** play() 常把倍率打回 1，需延后补设 */
+	function applyBoostRate() {
+		setPlaybackRate(SPEED_FAST)
+		setTimeout(() => {
+			if (speedBoost.value) {
+				setPlaybackRate(SPEED_FAST)
+			}
+		}, 50)
+		setTimeout(() => {
+			if (speedBoost.value) {
+				setPlaybackRate(SPEED_FAST)
+			}
+		}, 200)
+	}
+
+	function endSpeedBoost() {
+		if (!speedBoost.value) {
+			return
+		}
+		speedBoost.value = false
+		setPlaybackRate(SPEED_NORMAL)
+		haptic('light')
+	}
+
+	function clearSpeedHoldTimer() {
+		if (speedHoldTimer != 0) {
+			clearTimeout(speedHoldTimer)
+			speedHoldTimer = 0
+		}
+	}
+
+	function beginSpeedBoost() {
+		if (!speedGestureActive || playUrl.value.length == 0 || speedBoost.value || seeking.value) {
+			return
+		}
+		speedLongPressFired = true
+		speedBoost.value = true
+		haptic('medium')
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.play()
+			videoPlaying.value = true
+		} catch (e) {
+			console.log('[detail] boost play ' + e)
+		}
+		applyBoostRate()
+	}
+
+	function onSpeedTouchStart() {
+		if (playUrl.value.length == 0 || playLoading.value || seeking.value) {
+			speedGestureActive = false
+			return
+		}
+		speedGestureActive = true
+		speedLongPressFired = false
+		clearSpeedHoldTimer()
+		// 部分机型 video 不冒泡 longpress：用计时兜底，且不盖遮罩挡控件
+		speedHoldTimer = setTimeout(() => {
+			speedHoldTimer = 0
+			beginSpeedBoost()
+		}, SPEED_HOLD_MS) as number
+	}
+
+	function onLongPressSpeed() {
+		if (seeking.value) {
+			return
+		}
+		clearSpeedHoldTimer()
+		beginSpeedBoost()
+	}
+
+	function onSpeedTouchEnd() {
+		clearSpeedHoldTimer()
+		if (speedBoost.value || speedLongPressFired) {
+			endSpeedBoost()
+		}
+		speedGestureActive = false
+		speedLongPressFired = false
+	}
+
+	function onSpeedTouchCancel() {
+		clearSpeedHoldTimer()
+		if (speedBoost.value || speedLongPressFired) {
+			endSpeedBoost()
+		}
+		speedGestureActive = false
+		speedLongPressFired = false
+	}
+
+	/** 停声并卸掉 video 节点（原生播放器随节点销毁） */
+	function destroyPlayer() {
+		clearSpeedHoldTimer()
+		speedGestureActive = false
+		speedLongPressFired = false
+		endSpeedBoost()
+		resetProgress()
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.pause()
+		} catch (_) { }
+		if (playUrl.value.length > 0) {
+			playUrl.value = ''
+		}
+		videoPlaying.value = false
+		playerKey.value = playerKey.value + 1
 	}
 
 	async function playEpisode(ep: number, forceRefresh: boolean) {
@@ -293,14 +895,30 @@
 		playLoading.value = true
 		playTip.value = '获取播放地址…'
 		currentEp.value = ep
-		videoPlaying.value = false
+		// 先销毁上一集播放器，再拉新地址挂载
+		destroyPlayer()
+		pageVisible.value = true
 		try {
 			const info = await fetchPlayback(videoId.value, ep)
+			if (currentEp.value != ep) {
+				return
+			}
+			playerKey.value = playerKey.value + 1
 			playUrl.value = info.url
 			expiresAt.value = info.expiresAt
 			playTip.value = ''
 			if (isLoggedIn()) {
 				syncHistory(videoId.value, ep)
+			}
+			// 切集后评论跟着换；不在评论 Tab 时只清缓存
+			if (bodyTab.value == 2) {
+				loadComments(true)
+			} else if (commentsEp.value != ep) {
+				comments.value = [] as CommentItem[]
+				commentTotal.value = 0
+				commentPage.value = 1
+				commentPages.value = 1
+				commentsEp.value = 0
 			}
 		} catch (e) {
 			playUrl.value = ''
@@ -312,8 +930,7 @@
 	}
 
 	function onPlayError() {
-		playUrl.value = ''
-		videoPlaying.value = false
+		destroyPlayer()
 		playTip.value = '播放出错，点击选集重试'
 	}
 
@@ -341,6 +958,12 @@
 		if (!requireLogin()) { return }
 		pendingScore.value = myScore.value > 0 ? myScore.value : 5
 		showRatePanel.value = true
+		syncDetailLayout()
+	}
+
+	function cancelRate() {
+		showRatePanel.value = false
+		syncDetailLayout()
 	}
 
 	function pickScore(s: number) {
@@ -358,14 +981,110 @@
 			const my = await rateVideo(videoId.value, score)
 			myScore.value = my > 0 ? my : score
 			showRatePanel.value = false
+			syncDetailLayout()
 			uni.showToast({ title: '已评 ' + myScore.value + ' 星', icon: 'none' })
 		} catch (e) {
 			uni.showToast({ title: '' + e, icon: 'none' })
 		}
 	}
 
+	function switchBodyTab(tab: number) {
+		if (tab < 0 || tab > 2) {
+			return
+		}
+		if (bodyTab.value == tab) {
+			if (tab == 2 && (commentsEp.value != currentEp.value || comments.value.length == 0)) {
+				loadComments(true)
+			}
+			return
+		}
+		bodyTab.value = tab
+		showRatePanel.value = false
+		syncDetailLayout()
+		if (tab == 2) {
+			loadComments(true)
+		}
+	}
+
+	function onBodyScrollToLower() {
+		if (bodyTab.value == 2) {
+			loadMoreComments()
+		}
+	}
+
 	function onCommentInput(e: UniInputEvent) {
 		commentText.value = e.detail.value
+	}
+
+	function appendCommentsUnique(list: CommentItem[]) {
+		const merged = comments.value.slice(0)
+		for (let i = 0; i < list.length; i++) {
+			const c = list[i]
+			let exists = false
+			for (let j = 0; j < merged.length; j++) {
+				if (merged[j].id == c.id) {
+					exists = true
+					break
+				}
+			}
+			if (!exists) {
+				merged.push(c)
+			}
+		}
+		comments.value = merged
+	}
+
+	async function loadComments(reset: boolean) {
+		const vid = videoId.value
+		const ep = currentEp.value > 0 ? currentEp.value : 1
+		if (vid.length == 0) {
+			return
+		}
+		if (reset) {
+			commentLoading.value = true
+			comments.value = [] as CommentItem[]
+			commentTotal.value = 0
+			commentPage.value = 1
+			commentPages.value = 1
+			commentsEp.value = ep
+		} else {
+			if (commentLoadingMore.value || commentPage.value >= commentPages.value) {
+				return
+			}
+			commentLoadingMore.value = true
+		}
+		const nextPage = reset ? 1 : (commentPage.value + 1)
+		try {
+			const res = await fetchComments(vid, nextPage, COMMENT_PAGE_SIZE, ep)
+			// 请求期间切集 / 关评论区则丢弃
+			if (videoId.value != vid || currentEp.value != ep) {
+				return
+			}
+			if (reset) {
+				comments.value = res.items
+			} else {
+				appendCommentsUnique(res.items)
+			}
+			commentPage.value = res.page > 0 ? res.page : nextPage
+			commentPages.value = res.pages > 0 ? res.pages : 1
+			commentTotal.value = res.total > 0 ? res.total : comments.value.length
+			commentsEp.value = ep
+			if (res.items.length >= COMMENT_PAGE_SIZE && commentPage.value >= commentPages.value && comments.value.length < commentTotal.value) {
+				commentPages.value = commentPage.value + 1
+			}
+		} catch (e) {
+			console.log('[detail] comments ' + e)
+			if (reset) {
+				uni.showToast({ title: '评论加载失败', icon: 'none' })
+			}
+		} finally {
+			commentLoading.value = false
+			commentLoadingMore.value = false
+		}
+	}
+
+	function loadMoreComments() {
+		loadComments(false)
 	}
 
 	async function sendComment() {
@@ -375,12 +1094,17 @@
 			uni.showToast({ title: '请输入评论', icon: 'none' })
 			return
 		}
+		const ep = currentEp.value > 0 ? currentEp.value : 1
 		try {
-			await postComment(videoId.value, t, currentEp.value)
+			await postComment(videoId.value, t, ep)
 			commentText.value = ''
-			uni.showToast({ title: '已提交', icon: 'none' })
-			const res = await fetchComments(videoId.value, 1, 50)
-			comments.value = res.items
+			// 新评 status:0 待审，公开展示列表里不会立刻出现
+			uni.showToast({ title: '已提交，审核通过后显示', icon: 'none' })
+			if (bodyTab.value != 2) {
+				bodyTab.value = 2
+				syncDetailLayout()
+			}
+			loadComments(true)
 		} catch (e) {
 			uni.showToast({ title: '' + e, icon: 'none' })
 		}
@@ -401,9 +1125,16 @@
 
 	function onVideoPlay() {
 		videoPlaying.value = true
+		// 起播可能重置倍率，倍速中再钉一次
+		if (speedBoost.value) {
+			applyBoostRate()
+		}
 	}
 
 	function onVideoPause() {
+		if (speedBoost.value) {
+			return
+		}
 		videoPlaying.value = false
 	}
 
@@ -418,8 +1149,7 @@
 	}
 
 	onLoad((options) => {
-		refreshTypeScale()
-		titleFontStyle.value = fontStyle(20)
+		syncDetailLayout()
 		videoId.value = options['id'] ?? ''
 		const epRaw = options['ep'] ?? '0'
 		const epNum = parseFloat(epRaw)
@@ -433,19 +1163,112 @@
 	})
 
 	onShow(() => {
+		syncDetailLayout()
+		pageVisible.value = true
 		// 详情非 Tab 页：收起液态玻璃，避免挡住播放器底部控件
 		try {
 			uninstallLiquidTabBar()
 		} catch (_) { }
+		// 从二级页返回：重新挂载；autoplay 会起播（离开前未播则用户可再点）
+		if (resumeOnShow && playUrl.value.length > 0) {
+			playerKey.value = playerKey.value + 1
+		}
+		resumeOnShow = false
+	})
+
+	onHide(() => {
+		endSpeedBoost()
+		resumeOnShow = playUrl.value.length > 0
+		// 卸掉 video，避免栈里叠多个详情时旧播放器继续占资源/出声
+		try {
+			const ctx = uni.createVideoContext('detailPlayer')
+			ctx.pause()
+		} catch (_) { }
+		pageVisible.value = false
+		videoPlaying.value = false
+	})
+
+	onUnload(() => {
+		endSpeedBoost()
+		resumeOnShow = false
+		pageVisible.value = false
+		destroyPlayer()
+		expiresAt.value = 0
 	})
 </script>
 
 <style>
-	.page { flex: 1; background-color: #12141a; }
-	.page-inner { background-color: #12141a; }
-	.state-box { padding-top: 100px; align-items: center; padding-left: 24px; padding-right: 24px; }
+	.page {
+		flex: 1;
+		flex-direction: column;
+		background-color: #12141a;
+	}
+	.main {
+		flex: 1;
+		flex-direction: column;
+		width: 100%;
+	}
+	.header-strip {
+		width: 100%;
+		flex-shrink: 0;
+		padding-left: 16px;
+		padding-right: 16px;
+		padding-top: 12px;
+		background-color: #12141a;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #1E222B;
+	}
+	.body-tabs {
+		flex-direction: row;
+		margin-top: 4px;
+		margin-left: -4px;
+		margin-right: -4px;
+	}
+	.body-tab {
+		flex: 1;
+		height: 40px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		margin-left: 4px;
+		margin-right: 4px;
+	}
+	.body-tab-on {
+		border-bottom-width: 2px;
+		border-bottom-style: solid;
+		border-bottom-color: #E8C27A;
+	}
+	.body-tab-press { opacity: 0.75; }
+	.body-tab-text {
+		color: #8A8E96;
+		font-size: 14px;
+		font-weight: bold;
+	}
+	.body-tab-text-on { color: #E8C27A; }
+	.body-tab-sub {
+		margin-left: 6px;
+		color: #6F737A;
+		font-size: 12px;
+	}
+	.body-tab-sub-on { color: #E8C27A; }
+	.body-panel {
+		width: 100%;
+		flex-direction: column;
+		background-color: #12141a;
+	}
+	.body-scroll {
+		width: 100%;
+		background-color: #12141a;
+	}
+	.state-box { flex: 1; padding-top: 100px; align-items: center; padding-left: 24px; padding-right: 24px; }
 	.state-text { color: #8A8E96; font-size: 14px; text-align: center; }
 	.state-action { margin-top: 12px; color: #E8C27A; font-size: 13px; }
+	.player-block {
+		width: 100%;
+		flex-shrink: 0;
+		background-color: #000000;
+	}
 	.player-wrap {
 		width: 100%;
 		background-color: #000000;
@@ -462,6 +1285,126 @@
 		position: absolute; color: #ffffff; font-size: 13px;
 		background-color: rgba(0, 0, 0, 0.5); padding: 8px 12px; border-radius: 8px;
 	}
+	.speed-badge {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 12px;
+		align-items: center;
+		z-index: 12;
+	}
+	.speed-badge-text {
+		color: #F2F3F5;
+		font-size: 13px;
+		font-weight: bold;
+		letter-spacing: 1px;
+		background-color: rgba(0, 0, 0, 0.55);
+		padding: 6px 14px;
+		border-radius: 14px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: rgba(232, 194, 122, 0.55);
+	}
+	.prog-wrap {
+		width: 100%;
+		padding-left: 16px;
+		padding-right: 16px;
+		padding-top: 8px;
+		padding-bottom: 10px;
+		background-color: #000000;
+	}
+	.prog-wrap-on {
+		padding-top: 4px;
+		padding-bottom: 12px;
+	}
+	.seek-preview {
+		position: absolute;
+		left: 0;
+		bottom: 12px;
+		width: 120px;
+		align-items: center;
+		z-index: 42;
+	}
+	.seek-preview-frame {
+		width: 120px;
+		height: 68px;
+		border-radius: 6px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: rgba(255, 255, 255, 0.35);
+		overflow: hidden;
+		background-color: #1A1C20;
+		position: relative;
+	}
+	.seek-preview-video {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 120px;
+		height: 68px;
+	}
+	.seek-preview-time {
+		margin-top: 4px;
+		color: #F2F3F5;
+		font-size: 11px;
+		background-color: rgba(0, 0, 0, 0.55);
+		padding: 2px 8px;
+		border-radius: 10px;
+	}
+	.prog-times {
+		flex-direction: row;
+		justify-content: space-between;
+		margin-bottom: 6px;
+	}
+	.prog-time {
+		color: rgba(255, 255, 255, 0.85);
+		font-size: 11px;
+	}
+	.prog-track {
+		height: 18px;
+		justify-content: center;
+		position: relative;
+	}
+	.prog-track-on {
+		height: 22px;
+	}
+	.prog-base {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 8px;
+		height: 2px;
+		border-radius: 1px;
+		background-color: rgba(255, 255, 255, 0.22);
+	}
+	.prog-base-on {
+		top: 9px;
+		height: 3px;
+		border-radius: 2px;
+		background-color: rgba(255, 255, 255, 0.28);
+	}
+	.prog-fill {
+		height: 2px;
+		border-radius: 1px;
+		background-color: rgba(232, 194, 122, 0.95);
+		position: absolute;
+		left: 0;
+		top: 8px;
+	}
+	.prog-fill-on {
+		top: 9px;
+		height: 3px;
+		border-radius: 2px;
+		background-color: #E8C27A;
+	}
+	.prog-thumb {
+		position: absolute;
+		top: 4px;
+		width: 12px;
+		height: 12px;
+		border-radius: 6px;
+		background-color: #FFFFFF;
+	}
 	.center-play {
 		position: absolute;
 		left: 0;
@@ -470,6 +1413,7 @@
 		bottom: 0;
 		align-items: center;
 		justify-content: center;
+		z-index: 8;
 	}
 	.center-play-icon {
 		width: 64px;
@@ -481,13 +1425,18 @@
 		text-align: center;
 		line-height: 64px;
 	}
-	.info { padding: 16px; }
-	.title { color: #F2F3F5; font-size: 20px; font-weight: bold; }
+	.info { padding: 12px 16px 8px 16px; }
+	.title {
+		color: #F2F3F5;
+		font-size: 18px;
+		font-weight: bold;
+		text-overflow: ellipsis;
+	}
 	.meta { margin-top: 6px; color: #8A8E96; font-size: 12px; }
 	.author-link { color: #E8C27A; margin-top: 8px; }
 	.act-row {
 		flex-direction: row;
-		margin-top: 16px;
+		margin-top: 10px;
 	}
 	.act {
 		flex: 1;
@@ -510,8 +1459,8 @@
 	.act-text { color: #C8CCD3; font-size: 12px; font-weight: bold; }
 	.act-text-on { color: #E8C27A; }
 	.rate-panel {
-		margin-top: 12px;
-		padding: 16px;
+		margin-top: 10px;
+		padding: 14px;
 		background-color: #1A1D26;
 		border-radius: 12px;
 		border-width: 1px;
@@ -574,28 +1523,80 @@
 	.ep-text { color: #F2F3F5; font-size: 13px; }
 	.ep-text-locked { color: #6F737A; font-size: 11px; }
 	.ep-text-on { color: #1A1208; font-weight: bold; }
-	.comment-box { flex-direction: row; align-items: center; margin-bottom: 12px; }
-	.comment-input {
-		flex: 1; height: 40px; background-color: #1A1D26; border-radius: 10px;
-		padding-left: 14px; padding-right: 14px; color: #F2F3F5; font-size: 13px;
-		border-width: 1px; border-style: solid; border-color: #2A2E38;
-	}
-	.comment-send {
-		margin-left: 10px; height: 40px; padding-left: 14px; padding-right: 14px;
-		background-color: #E8C27A; border-radius: 10px;
-		align-items: center; justify-content: center;
-	}
-	.comment-send-text { color: #1A1208; font-size: 13px; font-weight: bold; }
-	.comment-item {
-		padding: 12px; margin-bottom: 8px;
-		background-color: #1A1D26; border-radius: 10px;
-	}
-	.comment-user { color: #E8C27A; font-size: 12px; }
-	.comment-text { margin-top: 6px; color: #C8CCD3; font-size: 13px; }
-	.comment-time { margin-top: 6px; color: #6F737A; font-size: 11px; }
 	.rel-row { height: 210px; flex-direction: row; }
-	.footer-tip { text-align: center; color: #6F737A; font-size: 12px; padding: 8px; }
 	.bottom-space { height: 32px; }
+	.cmt-head {
+		padding: 12px 16px 4px 16px;
+	}
+	.cmt-head-text {
+		color: #8A8E96;
+		font-size: 12px;
+	}
+	.cmt-foot {
+		padding-top: 12px;
+		padding-bottom: 8px;
+		align-items: center;
+	}
+	.cmt-foot-text {
+		color: #6F737A;
+		font-size: 12px;
+	}
+	.cmt-empty {
+		padding-top: 48px;
+		align-items: center;
+	}
+	.cmt-empty-text {
+		color: #8A8E96;
+		font-size: 13px;
+	}
+	.cmt-item {
+		padding: 12px 16px;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #1E222B;
+	}
+	.cmt-user { color: #E8C27A; font-size: 12px; }
+	.cmt-text { margin-top: 6px; color: #C8CCD3; font-size: 14px; }
+	.cmt-time { margin-top: 6px; color: #6F737A; font-size: 11px; }
+	.cmt-scroll-pad { height: 16px; }
+	.cmt-input-row {
+		flex-shrink: 0;
+		flex-direction: row;
+		align-items: center;
+		padding-left: 12px;
+		padding-right: 12px;
+		padding-top: 10px;
+		border-top-width: 1px;
+		border-top-style: solid;
+		border-top-color: #2A2E38;
+		background-color: #161920;
+	}
+	.cmt-input {
+		flex: 1;
+		height: 40px;
+		padding-left: 12px;
+		padding-right: 12px;
+		border-radius: 20px;
+		background-color: #22262F;
+		color: #F2F3F5;
+		font-size: 14px;
+	}
+	.cmt-send {
+		margin-left: 10px;
+		padding-left: 14px;
+		padding-right: 14px;
+		height: 36px;
+		border-radius: 18px;
+		background-color: #E8C27A;
+		align-items: center;
+		justify-content: center;
+	}
+	.cmt-send-press { opacity: 0.8; }
+	.cmt-send-text {
+		color: #1A1208;
+		font-size: 13px;
+		font-weight: bold;
+	}
 
 	/* #ifdef APP-IOS */
 	.act {
@@ -630,18 +1631,16 @@
 		height: 44px;
 		border-radius: 10px;
 	}
-	.comment-input {
+	.cmt-input {
 		height: 44px;
 		font-size: 16px;
-		border-radius: 12px;
 	}
-	.comment-send {
-		height: 44px;
+	.cmt-send {
+		height: 40px;
 		padding-left: 16px;
 		padding-right: 16px;
-		border-radius: 12px;
 	}
-	.comment-send-text {
+	.cmt-send-text {
 		font-size: 15px;
 	}
 	/* #endif */

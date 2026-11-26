@@ -2,16 +2,24 @@
  * 液态玻璃总开关。
  * Android / iOS：启用原生液态玻璃 TabBar（Android 需自定义基座）。
  * 其他端：关闭。
+ *
+ * Tab 底距请用 getTabBottomGap() / refreshLayout()（layout.uts），
+ * 勿再写死 96：需含安全区。
  */
 
 // #ifdef APP-ANDROID || APP-IOS
 export const USE_NATIVE_GLASS: boolean = true
-export const TAB_BOTTOM_GAP: number = 96
+/** 兼容旧引用：由 setTabBottomGapCache / refreshLayout 更新 */
+export let TAB_BOTTOM_GAP: number = 96
 // #endif
 
 // #ifndef APP-ANDROID
 // #ifndef APP-IOS
 export const USE_NATIVE_GLASS: boolean = false
-export const TAB_BOTTOM_GAP: number = 20
+export let TAB_BOTTOM_GAP: number = 20
 // #endif
 // #endif
+
+export function setTabBottomGapCache(v: number): void {
+	TAB_BOTTOM_GAP = v
+}

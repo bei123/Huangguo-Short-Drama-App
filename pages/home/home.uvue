@@ -29,14 +29,10 @@
 
 			<!-- 搜索结果态 -->
 			<template v-if="searching">
-				<!-- #ifdef APP-IOS -->
-				<hg-skeleton v-if="searchLoading && searchItems.length == 0" kind="search"></hg-skeleton>
-				<!-- #endif -->
-				<!-- #ifndef APP-IOS -->
 				<view v-if="searchLoading && searchItems.length == 0" class="state-box">
 					<text class="state-text">搜索中…</text>
+					<hg-skeleton kind="search"></hg-skeleton>
 				</view>
-				<!-- #endif -->
 				<view v-else-if="searchError.length > 0 && searchItems.length == 0" class="state-box" @click="doSearch">
 					<text class="state-text">{{searchError}}</text>
 					<text class="state-action">点击重试</text>
@@ -70,18 +66,11 @@
 					<text class="state-text">{{errorText}}</text>
 					<text class="state-action">点击重试</text>
 				</view>
-				<!-- #ifdef APP-IOS -->
-				<view v-else-if="loading" class="state-box">
-					<text class="state-text">{{loadHint}}</text>
-					<hg-skeleton kind="home"></hg-skeleton>
-				</view>
-				<!-- #endif -->
-				<!-- #ifndef APP-IOS -->
 				<view v-else-if="loading" class="state-box">
 					<text class="state-text">{{loadHint}}</text>
 					<text v-if="probeHost.length > 0" class="state-sub">{{probeHost}}</text>
+					<hg-skeleton kind="home"></hg-skeleton>
 				</view>
-				<!-- #endif -->
 				<template v-else>
 					<view class="quick-row">
 						<view class="quick-item quick-rank" hover-class="quick-hover" @click="goRank">
@@ -196,23 +185,35 @@
 	import { ensureEndpointReady, onProbeProgress, isProbeDone, ProbeProgress } from '../../common/http/endpoint-probe.uts'
 	import { HomeBanner, VideoCard, CateRec, TopicLite } from '../../common/models/video.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
-	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+	import {
+		getWindowWidth, getStatusBarHeight, getTabBottomGap, refreshLayout
+	} from '../../common/ui/layout.uts'
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
 
-	const winInfo = uni.getWindowInfo()
-	const winW = winInfo.windowWidth
-	const bannerW = winW - 32
+	refreshLayout()
+	const winW = ref(getWindowWidth())
+	const bannerW = ref(winW.value - 32)
 	// Banner 实测 1920×640（3:1）；用 0.5 会裁掉左右（任意门标题在左侧）
-	const bannerH = Math.floor(bannerW / 3)
-	const bottomGapStyle = 'height:' + TAB_BOTTOM_GAP + 'px'
-	const statusSpacerStyle = 'height:' + winInfo.statusBarHeight + 'px'
+	const bannerH = ref(Math.floor(bannerW.value / 3))
+	const bottomGapStyle = ref('height:' + getTabBottomGap() + 'px')
+	const statusSpacerStyle = ref('height:' + getStatusBarHeight() + 'px')
 	const brandFontStyle = ref(fontStyle(28))
 	const sectionFontStyle = ref(fontStyle(17))
 
-	function syncTypeStyles() {
+	function syncLayoutStyles() {
+		refreshLayout()
 		refreshTypeScale()
+		winW.value = getWindowWidth()
+		bannerW.value = winW.value - 32
+		bannerH.value = Math.floor(bannerW.value / 3)
+		bottomGapStyle.value = 'height:' + getTabBottomGap() + 'px'
+		statusSpacerStyle.value = 'height:' + getStatusBarHeight() + 'px'
 		brandFontStyle.value = fontStyle(28)
 		sectionFontStyle.value = fontStyle(17)
+	}
+
+	function syncTypeStyles() {
+		syncLayoutStyles()
 	}
 
 	const loading = ref(true)
@@ -471,11 +472,30 @@
 				}
 				cates.push(data.cateRec[i])
 			}
-			cateRec.value = cates
+			// 首屏先挂 2 行分类，其余空闲再补，减轻封面解密洪峰
+			const firstBatch: CateRec[] = [] as CateRec[]
+			const restBatch: CateRec[] = [] as CateRec[]
+			for (let i = 0; i < cates.length; i++) {
+				if (i < 2) {
+					firstBatch.push(cates[i])
+				} else {
+					restBatch.push(cates[i])
+				}
+			}
+			cateRec.value = firstBatch
 			topicRec.value = data.topicRec
 			const filled = fillBannerTitlesLocal(data.banners, data.featured, data.latest, cates)
 			banners.value = filled
 			fillBannerTitlesRemote(filled)
+			if (restBatch.length > 0) {
+				setTimeout(() => {
+					const merged = cateRec.value.slice(0)
+					for (let i = 0; i < restBatch.length; i++) {
+						merged.push(restBatch[i])
+					}
+					cateRec.value = merged
+				}, 80)
+			}
 		} catch (e) {
 			errorText.value = '首页加载失败，点击重试'
 			console.log('[home] fail ' + e)

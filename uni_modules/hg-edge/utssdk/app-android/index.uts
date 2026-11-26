@@ -410,7 +410,28 @@ export const clearEdgeSessions: ClearEdgeSessions = function (): void {
 	handshaking.clear()
 }
 
-/** Android 不走 Dynamic Type，固定返回基准 17 */
+/**
+ * 与 iOS bodyPointSize 对齐语义：返回「等效正文 pt」。
+ * Android 无 Dynamic Type，用 Configuration.fontScale × 17
+ * （getAppBaseInfo.fontSizeScaleFactor 仅微信小程序，App 不能用）。
+ */
 export const bodyPointSize: BodyPointSize = function (): number {
+	try {
+		const ctx = UTSAndroid.getAppContext()
+		if (ctx != null) {
+			const res = ctx.getResources()
+			if (res != null) {
+				const conf = res.getConfiguration()
+				if (conf != null) {
+					const s = conf.fontScale
+					if (s > 0.5 && s < 3.0) {
+						return (s as number) * 17.0
+					}
+				}
+			}
+		}
+	} catch (e) {
+		console.log('[hg-edge] bodyPointSize/fontScale ' + e)
+	}
 	return 17
 }

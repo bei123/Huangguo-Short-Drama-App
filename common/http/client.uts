@@ -151,7 +151,8 @@ function plainGet(url: string): Promise<UTSJSONObject> {
 				'Accept': 'application/json',
 				'Referer': HG_REFERER
 			} as UTSJSONObject,
-			timeout: 20000,
+			// 线路半通时别干等 20s，尽快走 edge
+			timeout: 3000,
 			success: (res) => {
 				const code = res.statusCode ?? 0
 				if (code < 200 || code >= 300) {

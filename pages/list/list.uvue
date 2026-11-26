@@ -3,21 +3,17 @@
 	<scroll-view class="page" direction="vertical" lower-threshold="120" @scrolltolower="loadMore">
 	<!-- #endif -->
 		<view class="page-inner">
-			<!-- #ifdef APP-IOS -->
-			<hg-skeleton v-if="loading && items.length == 0" kind="list"></hg-skeleton>
-			<!-- #endif -->
-			<!-- #ifndef APP-IOS -->
 			<view v-if="loading && items.length == 0" class="state-box">
 				<text class="state-text">加载中…</text>
+				<hg-skeleton kind="list"></hg-skeleton>
 			</view>
-			<!-- #endif -->
 			<view v-else-if="errorText.length > 0 && items.length == 0" class="state-box" @click="reload">
 				<text class="state-text">{{errorText}}</text>
 				<text class="state-action">点击重试</text>
 			</view>
 			<hg-empty v-else-if="items.length == 0" mark="空" title="暂无内容"></hg-empty>
 			<view v-else class="grid">
-				<view v-for="item in items" :key="'li-' + item.id" class="grid-card">
+				<view v-for="item in items" :key="'li-' + item.id" class="grid-card" :style="gridCardStyle">
 					<hg-video-card
 						:id="item.id"
 						:title="item.title"
@@ -46,6 +42,7 @@
 		fetchVideosByTag, fetchAllVideos
 	} from '../../common/api/content.uts'
 	import { VideoCard } from '../../common/models/video.uts'
+	import { refreshLayout, gridCardSize } from '../../common/ui/layout.uts'
 
 	const mode = ref('latest')
 	const route = ref('')
@@ -56,9 +53,28 @@
 	const page = ref(1)
 	const pages = ref(1)
 	const lastPageCount = ref(0)
-	const winW = uni.getWindowInfo().windowWidth
-	const cardW = Math.floor((winW - 16 - 16 - 16) / 3)
-	const cardH = Math.floor(cardW * 1.36)
+	refreshLayout()
+	const sized = gridCardSize(16, 16, 1.36)
+	const cardW = ref(sized[0])
+	const cardH = ref(sized[1])
+	const gridCols = ref(sized[2])
+	const gridCardStyle = ref('width:31%')
+
+	function syncListLayout() {
+		refreshLayout()
+		const next = gridCardSize(16, 16, 1.36)
+		cardW.value = next[0]
+		cardH.value = next[1]
+		gridCols.value = next[2]
+		if (gridCols.value <= 2) {
+			gridCardStyle.value = 'width:48%'
+		} else if (gridCols.value >= 4) {
+			gridCardStyle.value = 'width:23%'
+		} else {
+			gridCardStyle.value = 'width:31%'
+		}
+	}
+	syncListLayout()
 
 	const hasMore = computed((): boolean => {
 		if (page.value < pages.value) {
@@ -119,9 +135,13 @@
 	}
 
 	async function reload() {
+		const soft = items.value.length > 0
 		loading.value = true
 		errorText.value = ''
-		items.value = [] as VideoCard[]
+		// 软刷新保留旧列表，避免整表卸载 + 封面闪占位
+		if (!soft) {
+			items.value = [] as VideoCard[]
+		}
 		page.value = 1
 		pages.value = 1
 		lastPageCount.value = 0
@@ -130,6 +150,9 @@
 		} catch (e) {
 			errorText.value = '加载失败，点击重试'
 			console.log('[list] fail ' + e)
+			if (!soft) {
+				items.value = [] as VideoCard[]
+			}
 		} finally {
 			loading.value = false
 		}
@@ -161,11 +184,16 @@
 	}
 
 	onLoad((options) => {
+		syncListLayout()
 		mode.value = options['mode'] ?? 'latest'
 		route.value = options['route'] ?? ''
 		const title = options['title'] ?? '列表'
 		uni.setNavigationBarTitle({ title: title })
 		reload()
+	})
+
+	onShow(() => {
+		syncListLayout()
 	})
 </script>
 
@@ -176,6 +204,6 @@
 	.state-text { color: #8A8E96; font-size: 14px; text-align: center; }
 	.state-action { margin-top: 12px; color: #E8C27A; font-size: 13px; }
 	.grid { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
-	.grid-card { width: 31%; margin-bottom: 16px; }
+	.grid-card { margin-bottom: 16px; }
 	.footer-tip { text-align: center; color: #6F737A; font-size: 12px; padding: 12px; }
 </style>

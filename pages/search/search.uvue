@@ -47,14 +47,10 @@
 					</view>
 				</template>
 				<template v-else>
-					<!-- #ifdef APP-IOS -->
-					<hg-skeleton v-if="loading && items.length == 0" kind="search"></hg-skeleton>
-					<!-- #endif -->
-					<!-- #ifndef APP-IOS -->
 					<view v-if="loading && items.length == 0" class="state-box">
 						<text class="state-text">搜索中…</text>
+						<hg-skeleton kind="search"></hg-skeleton>
 					</view>
-					<!-- #endif -->
 					<view v-else-if="errorText.length > 0 && items.length == 0" class="state-box">
 						<text class="state-text">{{errorText}}</text>
 					</view>
@@ -92,9 +88,15 @@
 	import { VideoCard } from '../../common/models/video.uts'
 	import { TagHot } from '../../common/models/extra.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex } from '../../common/ui/liquid-tab.uts'
-	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+	import { refreshLayout, pagePadBottomStyle } from '../../common/ui/layout.uts'
 
-	const bodyPadStyle = 'padding: 4px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+	refreshLayout()
+	const bodyPadStyle = ref(pagePadBottomStyle(4, 16))
+
+	function syncLayoutStyles() {
+		refreshLayout()
+		bodyPadStyle.value = pagePadBottomStyle(4, 16)
+	}
 
 	const keyword = ref('')
 	const hotWords = ref<string[]>([] as string[])
@@ -172,7 +174,7 @@
 		loading.value = true
 		errorText.value = ''
 		page.value = 1
-		items.value = [] as VideoCard[]
+		// 保留旧结果直到新结果回来，减少闪烁
 		try {
 			const res = await fetchSearch(q, 1)
 			items.value = res.items
@@ -220,6 +222,7 @@
 	})
 
 	onShow(() => {
+		syncLayoutStyles()
 		try {
 			installLiquidTabBar()
 			syncLiquidTabIndex('/pages/search/search')

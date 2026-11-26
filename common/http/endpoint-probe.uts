@@ -53,6 +53,8 @@ let probePromise: Promise<string> | null = null
 let probeDone = false
 /** 首条可用线路已选出（可先放行业务请求，测速仍在后台继续） */
 let probeEarlyReady = false
+/** 业务已开始用线：禁止探测中途再切 baseUrl / 清 session */
+let lineLockedForContent = false
 let lastProgress: ProbeProgress = {
 	phase: 'idle',
 	done: 0,
@@ -425,14 +427,30 @@ function buildLatencyList(results: ProbeResult[]): EndpointLatency[] {
 
 /** 手动切换线路，并清 edge 会话 */
 export function switchToEndpoint(url: string): boolean {
+	lineLockedForContent = false
 	const changed = setHgBaseUrl(url)
 	try {
 		clearEdgeSessions()
 	} catch (_) { }
 	probeDone = true
+	probeEarlyReady = true
+	lineLockedForContent = true
 	markProbeCached()
 	for (let i = 0; i < lastLatencies.length; i++) {
 		lastLatencies[i].selected = lastLatencies[i].url == url
+	}
+	return changed
+}
+
+function trySetContentLine(url: string): boolean {
+	if (lineLockedForContent) {
+		return false
+	}
+	const changed = setHgBaseUrl(url)
+	if (changed) {
+		try {
+			clearEdgeSessions()
+		} catch (_) { }
 	}
 	return changed
 }
@@ -577,21 +595,12 @@ async function runProbe(): Promise<string> {
 					// 首条可用立刻切线并放行业务，不等全部测完
 					if (!earlyApplied) {
 						earlyApplied = true
-						const ch = setHgBaseUrl(bestUrl)
-						if (ch) {
-							try {
-								clearEdgeSessions()
-							} catch (_) { }
-						}
+						trySetContentLine(bestUrl)
 						probeEarlyReady = true
 						console.log('[endpoint] early ' + bestUrl + ' (' + bestMs + 'ms)')
 					} else {
-						const ch = setHgBaseUrl(bestUrl)
-						if (ch) {
-							try {
-								clearEdgeSessions()
-							} catch (_) { }
-						}
+						// 业务已开跑则冻结，避免中途换线清 session
+						trySetContentLine(bestUrl)
 					}
 				}
 				const host = anyOk ? hostOf(bestUrl) : ''
@@ -631,30 +640,32 @@ async function runProbe(): Promise<string> {
 		return bestUrl
 	}
 
-	const changed = setHgBaseUrl(bestUrl)
-	if (changed) {
-		try {
-			clearEdgeSessions()
-		} catch (_) { }
-		console.log('[endpoint] selected ' + bestUrl + ' (' + bestMs + 'ms)')
+	if (lineLockedForContent) {
+		console.log('[endpoint] locked keep ' + getHgBaseUrl() + ' (best was ' + bestUrl + ' ' + bestMs + 'ms)')
 	} else {
-		console.log('[endpoint] keep ' + bestUrl + ' (' + bestMs + 'ms)')
+		const changed = trySetContentLine(bestUrl)
+		if (changed) {
+			console.log('[endpoint] selected ' + bestUrl + ' (' + bestMs + 'ms)')
+		} else {
+			console.log('[endpoint] keep ' + bestUrl + ' (' + bestMs + 'ms)')
+		}
 	}
 	lastLatencies = buildLatencyList(collected)
 	probeDone = true
 	probeEarlyReady = true
 	markProbeCached()
-	const tip = hostOf(bestUrl) + ' · ' + bestMs + 'ms'
+	const shown = lineLockedForContent ? getHgBaseUrl() : bestUrl
+	const tip = hostOf(shown) + ' · ' + bestMs + 'ms'
 	emitProgress({
 		phase: 'done',
 		done: total,
 		total: total,
 		bestMs: bestMs,
-		bestHost: hostOf(bestUrl),
+		bestHost: hostOf(shown),
 		message: '已选 ' + tip
 	} as ProbeProgress)
 	uni.showToast({ title: tip, icon: 'none', duration: 1600 })
-	return bestUrl
+	return getHgBaseUrl()
 }
 
 /**
@@ -690,6 +701,7 @@ export async function ensureEndpointReady(): Promise<string> {
 			probeDone = true
 			probeEarlyReady = true
 		}
+		lineLockedForContent = true
 		return getHgBaseUrl()
 	}
 	selectFastestEndpoint()
@@ -697,6 +709,7 @@ export async function ensureEndpointReady(): Promise<string> {
 	const deadline = Date.now() + PROBE_TIMEOUT + 4000
 	while (Date.now() < deadline) {
 		if (probeDone || probeEarlyReady) {
+			lineLockedForContent = true
 			return getHgBaseUrl()
 		}
 		await new Promise<void>((r) => {
@@ -705,5 +718,7 @@ export async function ensureEndpointReady(): Promise<string> {
 			}, 40)
 		})
 	}
-	return await selectFastestEndpoint()
+	const url = await selectFastestEndpoint()
+	lineLockedForContent = true
+	return url
 }

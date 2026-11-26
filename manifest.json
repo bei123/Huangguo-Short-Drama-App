@@ -58,7 +58,7 @@
 				"default": {}
 			},
 			"abiFilters": [
-				"arm64-v8a"
+				"armeabi-v7a"
 			],
 			"permissions": [
 				"<uses-permission android:name=\"android.permission.VIBRATE\"/>"

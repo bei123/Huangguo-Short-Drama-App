@@ -131,6 +131,16 @@ object DxCrypto {
      * 下载加密封面并解密到缓存文件，返回本地绝对路径
      */
     fun fetchDecryptImageToFile(url: String, cacheDir: String): String {
+        val dir = java.io.File(cacheDir)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        // 按 URL 稳定命名，避免每次带时间戳导致磁盘永不命中
+        val key = Integer.toHexString(url.hashCode())
+        val cached = findCachedCover(dir, key)
+        if (cached != null) {
+            return cached.absolutePath
+        }
         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
         conn.connectTimeout = 15000
         conn.readTimeout = 20000
@@ -145,17 +155,23 @@ object DxCrypto {
             }
             val raw = conn.inputStream.use { it.readBytes() }
             val plain = decryptImageBytesSmart(raw)
-            val dir = java.io.File(cacheDir)
-            if (!dir.exists()) {
-                dir.mkdirs()
-            }
-            val name = "hg_" + Integer.toHexString(url.hashCode()) + "_" + System.currentTimeMillis() + imageExt(plain)
-            val file = java.io.File(dir, name)
+            val file = java.io.File(dir, "hg_$key${imageExt(plain)}")
             file.writeBytes(plain)
             return file.absolutePath
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun findCachedCover(dir: java.io.File, key: String): java.io.File? {
+        val exts = arrayOf(".jpg", ".png", ".webp", ".gif")
+        for (ext in exts) {
+            val f = java.io.File(dir, "hg_$key$ext")
+            if (f.exists() && f.length() > 16L) {
+                return f
+            }
+        }
+        return null
     }
 
     /**

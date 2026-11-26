@@ -1,38 +1,72 @@
 /**
- * iOS Dynamic Type 缩放（相对系统 body 17pt）。
- * Android 恒为 1，不改变安卓字号。
+ * 字号缩放（统一成相对 1.0 的比例，再乘设计基准 px）。
+ *
+ * 查询结论：
+ * - getAppBaseInfo.fontSizeScaleFactor / fontSizeSetting：仅微信小程序
+ * - App：用 hg-edge.bodyPointSize()（已导出，uts-proxy 可识别）
+ *   · iOS = UIFont.body.pointSize
+ *   · Android = Configuration.fontScale × 17
+ * - 再叠加轻度屏宽系数
  */
 import { bodyPointSize } from '@/uni_modules/hg-edge'
+import { getWindowWidth, refreshLayout } from './layout.uts'
 
-const IOS_BODY_BASE = 17.0
+const BODY_BASE = 17.0
 let cachedScale: number = 1.0
 
 export function getTypeScale(): number {
 	return cachedScale
 }
 
-export function refreshTypeScale(): number {
-	// #ifdef APP-IOS
+function clampScale(s: number): number {
+	if (s < 0.85) {
+		return 0.85
+	}
+	if (s > 1.35) {
+		return 1.35
+	}
+	return s
+}
+
+/** 按逻辑宽度估温和系数 */
+function widthScale(): number {
+	const w = getWindowWidth()
+	if (w <= 0) {
+		return 1.0
+	}
+	if (w < 340) {
+		return 0.92
+	}
+	if (w < 360) {
+		return 0.96
+	}
+	if (w >= 480 && w < 600) {
+		return 1.04
+	}
+	if (w >= 600) {
+		return 1.08
+	}
+	return 1.0
+}
+
+function readOsFontScale(): number {
 	try {
 		const pt = bodyPointSize()
 		if (pt > 0) {
-			let s = pt / IOS_BODY_BASE
-			if (s < 0.85) {
-				s = 0.85
-			}
-			if (s > 1.35) {
-				s = 1.35
-			}
-			cachedScale = s
+			return pt / BODY_BASE
 		}
 	} catch (e) {
-		console.log('[type-scale] refresh fail ' + e)
-		cachedScale = 1.0
+		console.log('[type-scale] bodyPointSize fail ' + e)
 	}
-	// #endif
-	// #ifndef APP-IOS
-	cachedScale = 1.0
-	// #endif
+	return 1.0
+}
+
+export function refreshTypeScale(): number {
+	refreshLayout()
+	const os = readOsFontScale()
+	const byW = widthScale()
+	// 系统缩放为主；宽度只做半程微调，避免叠乘过大
+	cachedScale = clampScale(os * (1.0 + (byW - 1.0) * 0.5))
 	return cachedScale
 }
 

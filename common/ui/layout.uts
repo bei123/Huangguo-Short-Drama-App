@@ -1,0 +1,121 @@
+/**
+ * 窗口度量与安全区：按机型动态算 Tab 底距、状态栏、内容宽。
+ * 页面 onShow / 回到前台时调用 refreshLayout()。
+ */
+import { USE_NATIVE_GLASS, setTabBottomGapCache } from './glass-config.uts'
+
+/** 液态 Tab 栏本体高度（与原生 62dp 对齐） */
+const GLASS_TAB_H = 62
+/** Tab 距底外边距（Android GlassTabHost bottomMargin 约 10） */
+const GLASS_TAB_MARGIN = 10
+/** 无原生玻璃时的底栏占位 */
+const FALLBACK_TAB_H = 50
+
+let cachedW: number = 0
+let cachedH: number = 0
+let cachedStatus: number = 0
+let cachedSafeBot: number = 0
+let cachedTabGap: number = 96
+
+/** 刷新并缓存窗口度量；返回 Tab 底距 */
+export function refreshLayout(): number {
+	const win = uni.getWindowInfo()
+	cachedW = win.windowWidth
+	cachedH = win.windowHeight
+	cachedStatus = win.statusBarHeight
+	cachedSafeBot = 0
+	try {
+		const insets = win.safeAreaInsets
+		if (insets != null && insets.bottom > 0) {
+			cachedSafeBot = insets.bottom
+		}
+	} catch (_) { }
+	if (USE_NATIVE_GLASS) {
+		cachedTabGap = GLASS_TAB_H + GLASS_TAB_MARGIN + cachedSafeBot
+		if (cachedTabGap < 80) {
+			cachedTabGap = 80
+		}
+		if (cachedTabGap > 140) {
+			cachedTabGap = 140
+		}
+	} else {
+		cachedTabGap = FALLBACK_TAB_H + cachedSafeBot
+		if (cachedTabGap < 20) {
+			cachedTabGap = 20
+		}
+	}
+	// 同步旧常量，兼容仍读 TAB_BOTTOM_GAP 的页面
+	setTabBottomGapCache(cachedTabGap)
+	return cachedTabGap
+}
+
+export function getWindowWidth(): number {
+	if (cachedW <= 0) {
+		refreshLayout()
+	}
+	return cachedW
+}
+
+export function getWindowHeight(): number {
+	if (cachedH <= 0) {
+		refreshLayout()
+	}
+	return cachedH
+}
+
+export function getStatusBarHeight(): number {
+	if (cachedW <= 0) {
+		refreshLayout()
+	}
+	return cachedStatus
+}
+
+export function getSafeBottom(): number {
+	if (cachedW <= 0) {
+		refreshLayout()
+	}
+	return cachedSafeBot
+}
+
+/** 液态 Tab / 页面底部留白（含安全区） */
+export function getTabBottomGap(): number {
+	if (cachedW <= 0) {
+		refreshLayout()
+	}
+	return cachedTabGap
+}
+
+export function makeStatusSpacerStyle(): string {
+	return 'height:' + getStatusBarHeight() + 'px'
+}
+
+export function makeTabBottomGapStyle(): string {
+	return 'height:' + getTabBottomGap() + 'px'
+}
+
+export function pagePadBottomStyle(top: number, horizontal: number): string {
+	return 'padding:' + top + 'px ' + horizontal + 'px ' + getTabBottomGap() + 'px ' + horizontal + 'px'
+}
+
+/**
+ * 双列/三列/四列：极窄 2 列，常规 3 列，平板宽屏 4 列。
+ */
+export function gridColumnCount(): number {
+	const w = getWindowWidth()
+	if (w < 340) {
+		return 2
+	}
+	if (w >= 600) {
+		return 4
+	}
+	return 3
+}
+
+/** 宫格卡片宽高（左右各 pad，列间距 gap） */
+export function gridCardSize(pad: number, gap: number, ratio: number): number[] {
+	const cols = gridColumnCount()
+	const w = getWindowWidth()
+	const cardW = Math.floor((w - pad * 2 - gap * (cols - 1)) / cols)
+	const cardH = Math.floor(cardW * ratio)
+	return [cardW, cardH, cols]
+}

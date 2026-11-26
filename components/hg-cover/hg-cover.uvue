@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="uts">
-	import { loadDecryptedCover } from '../../common/crypto/image.uts'
+	import { loadDecryptedCover, peekCachedCover } from '../../common/crypto/image.uts'
 
 	const props = defineProps({
 		src: { type: String, default: '' },
@@ -59,8 +59,14 @@
 	async function loadCover(raw: string, isRetry: boolean) {
 		const token = ++requestToken
 		if (!isRetry) {
-			localSrc.value = ''
 			retryCount = 0
+			const hit = peekCachedCover(raw)
+			if (hit.length > 0) {
+				localSrc.value = hit
+				return
+			}
+			// 无缓存才清；重试时保留旧图，避免闪占位
+			localSrc.value = ''
 		}
 		if (raw.length == 0) {
 			return

@@ -1,7 +1,6 @@
 import { decryptImage } from '@/uni_modules/hg-edge'
 import { HG_REFERER, resolveCoverUrl } from '../http/config.uts'
 
-let coverSeq = 0
 const memCache = new Map<string, string>()
 const inflight = new Map<string, Promise<string> | null>()
 
@@ -36,9 +35,22 @@ function releaseCoverSlot() {
 	}
 }
 
+/** 同步读内存缓存，供 hg-cover 命中时立刻展示、避免闪占位 */
+export function peekCachedCover(rawUrl: string): string {
+	const url = resolveCoverUrl(rawUrl)
+	if (url.length == 0) {
+		return ''
+	}
+	const cached = memCache.get(url)
+	if (cached != null && cached!.length > 0) {
+		return cached!
+	}
+	return ''
+}
+
 /**
- * 下载 CDN 加密封面 → AES-CBC 智能解密 → 写入 USER_DATA_PATH
- * 用 request+arraybuffer，避免 downloadFile 临时文件 ENOENT
+ * 下载 CDN 加密封面 → AES-CBC 智能解密 → 本地路径
+ * 必须走 uni.request 异步下载：原生同步 HttpURLConnection 会触发 NetworkOnMainThreadException
  */
 export function loadDecryptedCover(rawUrl: string): Promise<string> {
 	const url = resolveCoverUrl(rawUrl)
@@ -70,6 +82,10 @@ export function loadDecryptedCover(rawUrl: string): Promise<string> {
 }
 
 function fetchThenDecrypt(url: string): Promise<string> {
+	const disk = tryDiskCache(url)
+	if (disk.length > 0) {
+		return Promise.resolve(disk)
+	}
 	return new Promise<string>((resolve, reject) => {
 		uni.request({
 			url: url,
@@ -95,9 +111,8 @@ function fetchThenDecrypt(url: string): Promise<string> {
 					}
 					const rawB64 = uni.arrayBufferToBase64(buf)
 					const plainB64 = toPlainImageB64(rawB64)
-					coverSeq++
 					const ext = guessExtFromB64(plainB64)
-					const outPath = buildCoverPath(coverSeq, ext)
+					const outPath = buildCoverPath(url, ext)
 					const fs = uni.getFileSystemManager()
 					const dir = coverDir()
 					try {
@@ -126,8 +141,32 @@ function coverDir(): string {
 	return uni.env.USER_DATA_PATH + '/hg_covers'
 }
 
-function buildCoverPath(seq: number, ext: string): string {
-	return coverDir() + '/c_' + Date.now().toString() + '_' + seq.toString() + ext
+function urlKey(url: string): string {
+	let h = 0
+	for (let i = 0; i < url.length; i++) {
+		h = ((h << 5) - h) + url.charCodeAt(i)
+		h = h | 0
+	}
+	const n = h < 0 ? -h : h
+	return n.toString(16)
+}
+
+function buildCoverPath(url: string, ext: string): string {
+	return coverDir() + '/hg_' + urlKey(url) + ext
+}
+
+function tryDiskCache(url: string): string {
+	const key = urlKey(url)
+	const exts = ['.jpg', '.png', '.webp', '.gif'] as string[]
+	const fs = uni.getFileSystemManager()
+	for (let i = 0; i < exts.length; i++) {
+		const p = coverDir() + '/hg_' + key + exts[i]
+		try {
+			fs.accessSync(p)
+			return p
+		} catch (_) { }
+	}
+	return ''
 }
 
 function toPlainImageB64(rawB64: string): string {

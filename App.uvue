@@ -1,5 +1,6 @@
 <script setup>
 	import { installLiquidTabBar } from './common/ui/liquid-tab.uts'
+	import { refreshLayout } from './common/ui/layout.uts'
 	import { refreshTypeScale } from './common/ui/type-scale.uts'
 	import { selectFastestEndpoint } from './common/http/endpoint-probe.uts'
 	// #ifdef APP-ANDROID || APP-HARMONY
@@ -8,6 +9,7 @@
 
 	onLaunch(() => {
 		console.log('[app] launch Huangguo Short Drama')
+		refreshLayout()
 		refreshTypeScale()
 		// 启动即探测线路，首页/刷短剧可更早放行
 		selectFastestEndpoint()
@@ -29,7 +31,8 @@
 
 	onAppShow(() => {
 		console.log('[app] show')
-		// 用户改完系统字号回到前台时同步 Dynamic Type
+		// 分屏/旋转/改字号后回到前台：重算安全区与字号
+		refreshLayout()
 		refreshTypeScale()
 	})
 

@@ -139,7 +139,7 @@
 	import { fetchMe, logout } from '../../common/api/account.uts'
 	import { fetchUnreadCount, prefetchMyHistory } from '../../common/api/interact.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex, uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
-	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+	import { getWindowHeight, getSafeBottom, refreshLayout, pagePadBottomStyle } from '../../common/ui/layout.uts'
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
 	import { getHgBaseUrl } from '../../common/http/config.uts'
 	import {
@@ -151,7 +151,8 @@
 		switchToEndpoint
 	} from '../../common/http/endpoint-probe.uts'
 
-	const pagePadStyle = 'padding: 16px 16px ' + TAB_BOTTOM_GAP + 'px 16px'
+	refreshLayout()
+	const pagePadStyle = ref(pagePadBottomStyle(16, 16))
 	const nameFontStyle = ref(fontStyle(20))
 
 	const loggedIn = ref(false)
@@ -170,16 +171,21 @@
 	const lineSheetOpen = ref(false)
 	const currentHost = ref(hostOf(getHgBaseUrl()))
 	// 打开时隐藏原生 Tab，面板贴底；底距只留手势条
-	const sheetH = Math.floor(uni.getWindowInfo().windowHeight * 0.55)
-	let sheetSafeBot = 16
-	try {
-		const insets = uni.getWindowInfo().safeAreaInsets
-		if (insets != null && insets.bottom > sheetSafeBot) {
-			sheetSafeBot = insets.bottom
-		}
-	} catch (_) { }
-	const sheetStyle = 'height:' + sheetH + 'px;margin-bottom:0px'
-	const sheetListPadStyle = 'padding-bottom:' + (sheetSafeBot + 8) + 'px'
+	const sheetH = ref(Math.floor(getWindowHeight() * 0.55))
+	const sheetSafeBot = ref(Math.max(16, getSafeBottom()))
+	const sheetStyle = ref('height:' + sheetH.value + 'px;margin-bottom:0px')
+	const sheetListPadStyle = ref('padding-bottom:' + (sheetSafeBot.value + 8) + 'px')
+
+	function syncLayoutStyles() {
+		refreshLayout()
+		refreshTypeScale()
+		pagePadStyle.value = pagePadBottomStyle(16, 16)
+		nameFontStyle.value = fontStyle(20)
+		sheetH.value = Math.floor(getWindowHeight() * 0.55)
+		sheetSafeBot.value = Math.max(16, getSafeBottom())
+		sheetStyle.value = 'height:' + sheetH.value + 'px;margin-bottom:0px'
+		sheetListPadStyle.value = 'padding-bottom:' + (sheetSafeBot.value + 8) + 'px'
+	}
 
 	const currentLatencyTip = computed((): string => {
 		const cur = getHgBaseUrl()
@@ -414,8 +420,7 @@
 	}
 
 	onShow(() => {
-		refreshTypeScale()
-		nameFontStyle.value = fontStyle(20)
+		syncLayoutStyles()
 		refresh()
 		syncLinesFromCache()
 		try {

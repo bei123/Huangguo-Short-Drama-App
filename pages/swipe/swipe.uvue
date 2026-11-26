@@ -23,9 +23,15 @@
 		>
 			<swiper-item v-for="(item, idx) in items" :key="item.id + '_' + item.ep">
 				<view class="slide" :style="fullStyle">
-					<!-- 封面垫底，避免黑屏闪一下 -->
+					<!-- 封面只解当前±1，远处不抢解密队列 -->
 					<view class="cover-layer">
-						<hg-cover :src="item.cover" :width="winW" :height="winH" :radius="0"></hg-cover>
+						<hg-cover
+							v-if="shouldShowCover(idx)"
+							:src="item.cover"
+							:width="winW"
+							:height="winH"
+							:radius="0"
+						></hg-cover>
 					</view>
 
 					<video
@@ -33,7 +39,7 @@
 						class="player"
 						:id="'swipeVideo' + idx"
 						:src="item.playUrl"
-						:initial-time="idx == current ? playCurrent : 0"
+						:initial-time="idx == current ? videoInitialTime : 0"
 						:autoplay="idx == current && !paused"
 						:loop="true"
 						:controls="false"
@@ -239,7 +245,7 @@
 	import { isLoggedIn } from '../../common/auth/session.uts'
 	import { ensureEndpointReady, selectFastestEndpoint } from '../../common/http/endpoint-probe.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex, uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
-	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
+	import { getTabBottomGap, getWindowWidth, getWindowHeight, getStatusBarHeight, getSafeBottom, refreshLayout } from '../../common/ui/layout.uts'
 
 	type SwipeItem = {
 		id: string
@@ -255,40 +261,58 @@
 		collected: boolean
 	}
 
-	const win = uni.getWindowInfo()
-	const winW = win.windowWidth
-	const winH = win.windowHeight
-	const statusH = win.statusBarHeight
-	const fullStyle = 'width:' + winW + 'px;height:' + winH + 'px'
-	const navStyle = 'padding-top:' + statusH + 'px'
+	refreshLayout()
+	const winW = ref(getWindowWidth())
+	const winH = ref(getWindowHeight())
+	const statusH = ref(getStatusBarHeight())
+	const fullStyle = ref('width:' + winW.value + 'px;height:' + winH.value + 'px')
+	const navStyle = ref('padding-top:' + statusH.value + 'px')
 	// 倍速提示贴在导航标题下方，避开画面中部
-	const speedBadgeStyle = 'top:' + (statusH + 52) + 'px'
+	const speedBadgeStyle = ref('top:' + (statusH.value + 52) + 'px')
 	/** 默认细线占位矮，HUD 更贴底；拖动时视觉加厚但不抬 HUD */
 	const PROG_BLOCK_H = 28
-	const progWrapStyle = 'bottom:' + TAB_BOTTOM_GAP + 'px'
-	const hudActionsStyle = 'bottom:' + (TAB_BOTTOM_GAP + PROG_BLOCK_H) + 'px'
-	const hudInfoStyle = 'bottom:' + (TAB_BOTTOM_GAP + PROG_BLOCK_H) + 'px'
-	const hintStyle = 'bottom:' + (TAB_BOTTOM_GAP + PROG_BLOCK_H + 8) + 'px'
-	const cmtSheetH = Math.floor(winH * 0.62)
+	const progWrapStyle = ref('bottom:' + getTabBottomGap() + 'px')
+	const hudActionsStyle = ref('bottom:' + (getTabBottomGap() + PROG_BLOCK_H) + 'px')
+	const hudInfoStyle = ref('bottom:' + (getTabBottomGap() + PROG_BLOCK_H) + 'px')
+	const hintStyle = ref('bottom:' + (getTabBottomGap() + PROG_BLOCK_H + 8) + 'px')
+	const cmtSheetH = ref(Math.floor(winH.value * 0.62))
 	// 打开评论时会隐藏原生 Tab，面板贴底；仅留手势条安全距
-	let safeBot = 16
-	try {
-		const insets = win.safeAreaInsets
-		if (insets != null && insets.bottom > safeBot) {
-			safeBot = insets.bottom
-		}
-	} catch (_) { }
-	const cmtSheetStyle = 'height:' + cmtSheetH + 'px;margin-bottom:0px'
-	const cmtSheetLiveStyle = ref(cmtSheetStyle)
+	let safeBot = Math.max(16, getSafeBottom())
+	const cmtSheetStyle = ref('height:' + cmtSheetH.value + 'px;margin-bottom:0px')
+	const cmtSheetLiveStyle = ref(cmtSheetStyle.value)
 	const cmtMaskStyle = ref('background-color:rgba(0,0,0,0.55)')
-	const cmtInputPad = Math.max(12, safeBot)
-	const cmtInputPadStyle = 'padding-bottom:' + cmtInputPad + 'px'
+	let cmtInputPad = Math.max(12, safeBot)
+	const cmtInputPadStyle = ref('padding-bottom:' + cmtInputPad + 'px')
 	// 固定滚动区高度，避免 App 上 flex 滚动裁切导致「看起来加载不全」
-	const cmtScrollH = Math.max(180, cmtSheetH - 52 - 48 - 56 - cmtInputPad - 18)
-	const cmtScrollStyle = 'height:' + cmtScrollH + 'px'
+	let cmtScrollH = Math.max(180, cmtSheetH.value - 52 - 48 - 56 - cmtInputPad - 18)
+	const cmtScrollStyle = ref('height:' + cmtScrollH + 'px')
 	const COMMENT_PAGE_SIZE = 30
 	const CMT_CLOSE_X = 96
-	const CMT_CLOSE_Y = Math.max(110, Math.floor(cmtSheetH * 0.22))
+	let CMT_CLOSE_Y = Math.max(110, Math.floor(cmtSheetH.value * 0.22))
+
+	function syncSwipeLayout() {
+		refreshLayout()
+		winW.value = getWindowWidth()
+		winH.value = getWindowHeight()
+		statusH.value = getStatusBarHeight()
+		fullStyle.value = 'width:' + winW.value + 'px;height:' + winH.value + 'px'
+		navStyle.value = 'padding-top:' + statusH.value + 'px'
+		speedBadgeStyle.value = 'top:' + (statusH.value + 52) + 'px'
+		const gap = getTabBottomGap()
+		progWrapStyle.value = 'bottom:' + gap + 'px'
+		hudActionsStyle.value = 'bottom:' + (gap + PROG_BLOCK_H) + 'px'
+		hudInfoStyle.value = 'bottom:' + (gap + PROG_BLOCK_H) + 'px'
+		hintStyle.value = 'bottom:' + (gap + PROG_BLOCK_H + 8) + 'px'
+		cmtSheetH.value = Math.floor(winH.value * 0.62)
+		safeBot = Math.max(16, getSafeBottom())
+		cmtSheetStyle.value = 'height:' + cmtSheetH.value + 'px;margin-bottom:0px'
+		cmtSheetLiveStyle.value = cmtSheetStyle.value
+		cmtInputPad = Math.max(12, safeBot)
+		cmtInputPadStyle.value = 'padding-bottom:' + cmtInputPad + 'px'
+		cmtScrollH = Math.max(180, cmtSheetH.value - 52 - 48 - 56 - cmtInputPad - 18)
+		cmtScrollStyle.value = 'height:' + cmtScrollH + 'px'
+		CMT_CLOSE_Y = Math.max(110, Math.floor(cmtSheetH.value * 0.22))
+	}
 
 	const items = ref<SwipeItem[]>([] as SwipeItem[])
 	const current = ref(0)
@@ -346,7 +370,11 @@
 	const SPEED_NORMAL = 1.0
 
 	const playCurrent = ref(0)
+	/** 进度条用节流后的值，避免 timeupdate 狂刷布局 */
+	const uiPlayCurrent = ref(0)
 	const playDuration = ref(0)
+	/** 仅挂载/回前台续播时写入；勿绑定 playCurrent */
+	const videoInitialTime = ref(0)
 	const seeking = ref(false)
 	const seekRatio = ref(0)
 	const PROG_PAD = 16
@@ -365,6 +393,11 @@
 	let lastLiveSeekT = -1
 	let pendingSeekT = -1
 	let liveSeekTimer: number = 0
+	let lastUiProgMs = 0
+	const UI_PROG_GAP_MS = 120
+	/** 推荐流保留时长：Tab 切走再回来不重洗 */
+	const FEED_KEEP_TTL_MS = 10 * 60 * 1000
+	let feedLoadedAt = 0
 
 	const displayRatio = computed((): number => {
 		if (seeking.value) {
@@ -373,7 +406,7 @@
 		if (playDuration.value <= 0) {
 			return 0
 		}
-		let r = playCurrent.value / playDuration.value
+		let r = uiPlayCurrent.value / playDuration.value
 		if (r < 0) {
 			r = 0
 		}
@@ -388,7 +421,7 @@
 	})
 
 	const progThumbStyle = computed((): string => {
-		const trackW = winW - PROG_PAD * 2
+		const trackW = winW.value - PROG_PAD * 2
 		const thumb = PROG_THUMB
 		const x = displayRatio.value * trackW - thumb / 2
 		return 'left:' + x + 'px'
@@ -427,10 +460,10 @@
 		const ratio = clampSeekRatio(r)
 		seekUiRatio.value = ratio
 		seekRatio.value = ratio
-		const trackW = winW - PROG_PAD * 2
+		const trackW = winW.value - PROG_PAD * 2
 		let left = PROG_PAD + ratio * trackW - PREVIEW_W / 2
 		const minL = PROG_PAD
-		const maxL = winW - PROG_PAD - PREVIEW_W
+		const maxL = winW.value - PROG_PAD - PREVIEW_W
 		if (left < minL) {
 			left = minL
 		}
@@ -443,7 +476,7 @@
 
 	function ratioFromPageX(pageX: number): number {
 		const left = PROG_PAD
-		const w = winW - PROG_PAD * 2
+		const w = winW.value - PROG_PAD * 2
 		if (w <= 0) {
 			return 0
 		}
@@ -560,6 +593,7 @@
 		const idx = current.value
 		const t = r * playDuration.value
 		playCurrent.value = t
+		uiPlayCurrent.value = t
 		pendingSeekT = -1
 		try {
 			const ctx = uni.createVideoContext('swipeVideo' + idx)
@@ -582,9 +616,15 @@
 			return
 		}
 		try {
-			playCurrent.value = e.detail.currentTime
+			const t = e.detail.currentTime
+			playCurrent.value = t
 			if (e.detail.duration > 0) {
 				playDuration.value = e.detail.duration
+			}
+			const now = Date.now()
+			if (now - lastUiProgMs >= UI_PROG_GAP_MS) {
+				lastUiProgMs = now
+				uiPlayCurrent.value = t
 			}
 		} catch (_) { }
 	}
@@ -594,9 +634,12 @@
 		pendingSeekT = -1
 		lastLiveSeekT = -1
 		playCurrent.value = 0
+		uiPlayCurrent.value = 0
+		videoInitialTime.value = 0
 		playDuration.value = 0
 		seeking.value = false
 		seekRatio.value = 0
+		lastUiProgMs = 0
 	}
 
 	function haptic(kind: string) {
@@ -717,8 +760,13 @@
 
 	function shouldMountVideo(idx: number): boolean {
 		const c = current.value
-		// 当前 + 下一条挂载，便于预缓冲；上一条保留一格方便回滑
-		return idx == c || idx == c - 1 || idx == c + 1
+		// 只挂当前 + 下一条预载；上一条必须卸掉，否则原生播放器不会销毁
+		return idx == c || idx == c + 1
+	}
+
+	function shouldShowCover(idx: number): boolean {
+		const c = current.value
+		return idx >= c - 1 && idx <= c + 1
 	}
 
 	function requireLogin(): boolean {
@@ -808,12 +856,12 @@
 		ensurePlay(center + 2)
 	}
 
-	/** 切 Tab 时停掉当前±1 全部挂载播放器（保留当前进度，不 seek） */
+	/** 切 Tab 时停掉当前已挂载播放器（保留当前进度，不 seek） */
 	function pauseAllMounted() {
 		const c = current.value
 		const n = items.value.length
 		for (let i = 0; i < n; i++) {
-			if (i < c - 1 || i > c + 1) {
+			if (i != c && i != c + 1) {
 				continue
 			}
 			try {
@@ -876,6 +924,8 @@
 			feedPages = pages.value
 
 			pauseAllMounted()
+			// 先卸掉推荐流全部 video，再换全集列表，避免旧播放器残留
+			pageVisible.value = false
 			seriesMode.value = true
 			items.value = list
 			// 从当前正在看的集切入（推荐流默认第 1 集）
@@ -890,10 +940,8 @@
 			paused.value = false
 			showSwipeHint.value = true
 			resetProgress()
+			pageVisible.value = true
 			prefetchAround(start)
-			if (start > 0) {
-				ensurePlay(start - 1)
-			}
 			haptic('medium')
 			uni.showToast({ title: '上滑切换下一集', icon: 'none' })
 		} catch (e) {
@@ -916,6 +964,7 @@
 			closeComments()
 		}
 		pauseAllMounted()
+		pageVisible.value = false
 		seriesMode.value = false
 		if (feedSnapshot.length > 0) {
 			items.value = feedSnapshot
@@ -927,6 +976,7 @@
 		paused.value = false
 		showSwipeHint.value = false
 		resetProgress()
+		pageVisible.value = true
 		const idx = current.value
 		prefetchAround(idx)
 		setTimeout(() => {
@@ -1192,18 +1242,20 @@
 		ensurePlay(idx)
 	}
 
+	/** 清掉远离窗口的播放地址；保留 keep-1～keep+2，回滑/预取少打 playback */
 	function releaseFarVideos(keep: number) {
 		for (let i = 0; i < items.value.length; i++) {
-			if (i < keep - 2 || i > keep + 2) {
-				const it = items.value[i]
-				if (it.playUrl.length > 0) {
-					stopVideoAt(i)
-					patchItem(i, (x) => {
-						x.playUrl = ''
-						x.playLoading = false
-						x.playError = ''
-					})
-				}
+			if (i >= keep - 1 && i <= keep + 2) {
+				continue
+			}
+			const it = items.value[i]
+			if (it.playUrl.length > 0) {
+				stopVideoAt(i)
+				patchItem(i, (x) => {
+					x.playUrl = ''
+					x.playLoading = false
+					x.playError = ''
+				})
 			}
 		}
 	}
@@ -1273,6 +1325,7 @@
 				setRate(prev, SPEED_NORMAL)
 				speedBoost.value = false
 			}
+			// 先停声，再改 current：shouldMount 变为 false，上一条 video 节点销毁
 			stopVideoAt(prev)
 			stopOthers(idx)
 		}
@@ -1284,7 +1337,8 @@
 			showSwipeHint.value = false
 		}
 		prefetchAround(idx)
-		// 稍后再播当前，确保上一条已 pause；下一条已在 prefetch/warm
+		releaseFarVideos(idx)
+		// 稍后再播当前，等上一条 v-if 卸掉
 		setTimeout(() => {
 			if (current.value != idx) {
 				return
@@ -1295,7 +1349,6 @@
 			} catch (_) { }
 			warmNextVideo(idx + 1)
 		}, 80)
-		releaseFarVideos(idx)
 		if (idx >= items.value.length - 3) {
 			loadMore()
 		}
@@ -1379,8 +1432,13 @@
 			commentLoadingMore.value = true
 		}
 		const nextPage = reset ? 1 : (commentPage.value + 1)
+		let ep = 0
+		const cur = items.value[current.value]
+		if (cur != null && cur.id == videoId && cur.ep > 0) {
+			ep = cur.ep
+		}
 		try {
-			const res = await fetchComments(videoId, nextPage, COMMENT_PAGE_SIZE)
+			const res = await fetchComments(videoId, nextPage, COMMENT_PAGE_SIZE, ep)
 			if (commentVideoId != videoId) {
 				return
 			}
@@ -1588,7 +1646,7 @@
 			await postComment(commentVideoId, t, ep)
 			commentDraft.value = ''
 			haptic('medium')
-			uni.showToast({ title: '已发送', icon: 'none' })
+			uni.showToast({ title: '已提交，审核通过后显示', icon: 'none' })
 			await loadComments(commentVideoId, true)
 		} catch (e) {
 			uni.showToast({ title: '' + e, icon: 'none' })
@@ -1667,6 +1725,7 @@
 			page.value = packed.start
 			current.value = 0
 			if (packed.list.length > 0) {
+				feedLoadedAt = Date.now()
 				prefetchAround(0)
 			}
 		} catch (e) {
@@ -1679,6 +1738,32 @@
 		}
 	}
 
+	function resumeCurrentIfNeeded() {
+		if (!resumeOnShow || items.value.length == 0) {
+			resumeOnShow = false
+			return
+		}
+		paused.value = false
+		resumeOnShow = false
+		const idx = current.value
+		const seekTo = playCurrent.value
+		videoInitialTime.value = seekTo > 0.5 ? seekTo : 0
+		setTimeout(() => {
+			if (!pageVisible.value || current.value != idx || paused.value) {
+				return
+			}
+			try {
+				const ctx = uni.createVideoContext('swipeVideo' + idx)
+				if (seekTo > 0.5) {
+					ctx.seek(seekTo)
+				}
+				ctx.play()
+			} catch (_) { }
+			// 续播完成后清掉，避免后续 remount 反复 seek
+			videoInitialTime.value = 0
+		}, 80)
+	}
+
 	onLoad(() => {
 		skipNextShowReload = true
 		// 尽早开探测，与首屏请求重叠
@@ -1687,35 +1772,27 @@
 	})
 
 	onShow(() => {
+		syncSwipeLayout()
 		pageVisible.value = true
 		try {
 			installLiquidTabBar()
 			syncLiquidTabIndex('/pages/swipe/swipe')
 		} catch (_) { }
-		// 连看模式：保留进度续播
 		if (seriesMode.value) {
-			if (resumeOnShow && items.value.length > 0) {
-				paused.value = false
-				resumeOnShow = false
-				const idx = current.value
-				setTimeout(() => {
-					if (!pageVisible.value || current.value != idx || paused.value) {
-						return
-					}
-					try {
-						const ctx = uni.createVideoContext('swipeVideo' + idx)
-						ctx.play()
-					} catch (_) { }
-				}, 80)
-			}
+			resumeCurrentIfNeeded()
 			return
 		}
 		if (skipNextShowReload) {
 			skipNextShowReload = false
 			return
 		}
+		// 有内容且未过期：保留列表续播，不重洗牌
+		const fresh = feedLoadedAt > 0 && (Date.now() - feedLoadedAt) < FEED_KEEP_TTL_MS
+		if (items.value.length > 0 && fresh) {
+			resumeCurrentIfNeeded()
+			return
+		}
 		resumeOnShow = false
-		// 每次进 Tab 重新随机一批；已有内容时 keepUi，不闪「准备推荐」
 		reload()
 	})
 
