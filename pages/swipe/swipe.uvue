@@ -237,7 +237,7 @@
 	import { VideoCard, EpisodeItem } from '../../common/models/video.uts'
 	import { CommentItem } from '../../common/models/extra.uts'
 	import { isLoggedIn } from '../../common/auth/session.uts'
-	import { ensureEndpointReady } from '../../common/http/endpoint-probe.uts'
+	import { ensureEndpointReady, selectFastestEndpoint } from '../../common/http/endpoint-probe.uts'
 	import { installLiquidTabBar, syncLiquidTabIndex, uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
 	import { TAB_BOTTOM_GAP } from '../../common/ui/glass-config.uts'
 
@@ -329,6 +329,8 @@
 	let resumeOnShow = false
 	/** 跳过 onLoad 后的第一次 onShow，避免连拉两次 */
 	let skipNextShowReload = true
+	/** 缓存推荐流总页数，避免每次先打第 1 页探页数 */
+	let cachedFeedPages = 1
 	/** 已出现过的视频 id，加载更多时去重 */
 	let seenIds: string[] = [] as string[]
 	/** 手势：短触暂停 / 长按倍速 */
@@ -1593,43 +1595,84 @@
 		}
 	}
 
+	function packFeed(resItems: VideoCard[], start: number): { list: SwipeItem[], start: number } {
+		const raw: SwipeItem[] = [] as SwipeItem[]
+		for (let i = 0; i < resItems.length; i++) {
+			raw.push(cardToItem(resItems[i]))
+		}
+		return { list: shuffleItems(raw), start: start }
+	}
+
+	async function fetchRandomFeed(): Promise<{ list: SwipeItem[], start: number }> {
+		// 冷启动不知道总页数：先探第 1 页拿 pages，再随机跳页（与旧逻辑一致）
+		if (cachedFeedPages <= 1) {
+			const probe = await fetchFeedRecommend(1)
+			if (probe.pages > 0) {
+				cachedFeedPages = probe.pages
+				pages.value = probe.pages
+			}
+			const start = randomPage(cachedFeedPages)
+			if (start == 1) {
+				return packFeed(probe.items, 1)
+			}
+			const res = await fetchFeedRecommend(start)
+			if (res.pages > 0) {
+				cachedFeedPages = res.pages
+				pages.value = res.pages
+			}
+			if (res.items.length == 0) {
+				return packFeed(probe.items, 1)
+			}
+			return packFeed(res.items, start)
+		}
+		// 已有页数：只打一枪随机页
+		const start = randomPage(cachedFeedPages)
+		let res = await fetchFeedRecommend(start)
+		if (res.pages > 0) {
+			cachedFeedPages = res.pages
+			pages.value = res.pages
+		}
+		if (res.items.length == 0 && start != 1) {
+			res = await fetchFeedRecommend(1)
+			if (res.pages > 0) {
+				cachedFeedPages = res.pages
+				pages.value = res.pages
+			}
+			return packFeed(res.items, 1)
+		}
+		return packFeed(res.items, start)
+	}
+
 	async function reload() {
-		booting.value = true
+		const keepUi = items.value.length > 0
+		if (!keepUi) {
+			booting.value = true
+		}
 		bootError.value = ''
 		seriesMode.value = false
 		feedSnapshot = [] as SwipeItem[]
-		items.value = [] as SwipeItem[]
-		current.value = 0
-		page.value = 1
-		pages.value = 1
+		if (!keepUi) {
+			items.value = [] as SwipeItem[]
+			current.value = 0
+		}
 		seenIds = [] as string[]
 		paused.value = false
 		showSwipeHint.value = true
 		resetProgress()
 		try {
 			await ensureEndpointReady()
-			// 先探总页数，再随机落在某一页，避免每次都从第 1 页同一批开始
-			const probe = await fetchFeedRecommend(1)
-			const totalPages = probe.pages > 0 ? probe.pages : 1
-			pages.value = totalPages
-			const start = randomPage(totalPages)
-			const res = start == 1 ? probe : await fetchFeedRecommend(start)
-			if (res.pages > 0) {
-				pages.value = res.pages
-			}
-			const raw: SwipeItem[] = [] as SwipeItem[]
-			for (let i = 0; i < res.items.length; i++) {
-				raw.push(cardToItem(res.items[i]))
-			}
-			const list = shuffleItems(raw)
-			markSeen(list)
-			items.value = list
-			page.value = start
-			if (list.length > 0) {
+			const packed = await fetchRandomFeed()
+			markSeen(packed.list)
+			items.value = packed.list
+			page.value = packed.start
+			current.value = 0
+			if (packed.list.length > 0) {
 				prefetchAround(0)
 			}
 		} catch (e) {
-			bootError.value = '加载失败，点击重试'
+			if (items.value.length == 0) {
+				bootError.value = '加载失败，点击重试'
+			}
 			console.log('[swipe] reload ' + e)
 		} finally {
 			booting.value = false
@@ -1638,6 +1681,8 @@
 
 	onLoad(() => {
 		skipNextShowReload = true
+		// 尽早开探测，与首屏请求重叠
+		selectFastestEndpoint()
 		reload()
 	})
 
@@ -1647,7 +1692,7 @@
 			installLiquidTabBar()
 			syncLiquidTabIndex('/pages/swipe/swipe')
 		} catch (_) { }
-		// 推荐流：每次进 Tab 重新随机一批；连看模式保留进度续播
+		// 连看模式：保留进度续播
 		if (seriesMode.value) {
 			if (resumeOnShow && items.value.length > 0) {
 				paused.value = false
@@ -1670,6 +1715,7 @@
 			return
 		}
 		resumeOnShow = false
+		// 每次进 Tab 重新随机一批；已有内容时 keepUi，不闪「准备推荐」
 		reload()
 	})
 

@@ -105,7 +105,7 @@
 					</view>
 
 					<scroll-view v-if="banners.length > 0" class="banner-row" direction="horizontal" :show-scrollbar="false">
-						<view v-for="(b, i) in banners" :key="b.id" class="banner-item" @click="openVideo(b.videoId)">
+						<view v-for="(b, i) in banners" :key="'bn-' + b.id + '-' + i" class="banner-item" @click="openVideo(b.videoId)">
 							<hg-cover :src="b.image" :width="bannerW" :height="bannerH" :radius="14"></hg-cover>
 							<view v-if="b.title.length > 0" class="banner-mask">
 								<text class="banner-title" max-lines="1">{{b.title}}</text>
@@ -120,7 +120,7 @@
 						<scroll-view class="row" direction="horizontal" :show-scrollbar="false">
 							<hg-video-card
 								v-for="item in featured"
-								:key="item.id"
+								:key="'ft-' + item.id"
 								:id="item.id"
 								:title="item.title"
 								:cover="item.cover"
@@ -139,7 +139,7 @@
 						<scroll-view class="row" direction="horizontal" :show-scrollbar="false">
 							<hg-video-card
 								v-for="item in latest"
-								:key="item.id"
+								:key="'lt-' + item.id"
 								:id="item.id"
 								:title="item.title"
 								:cover="item.cover"
@@ -156,7 +156,7 @@
 							<text class="section-more" @click="goTopics">更多</text>
 						</view>
 						<scroll-view class="topic-row" direction="horizontal" :show-scrollbar="false">
-							<view v-for="t in topicRec" :key="t.id" class="topic-item" @click="openTopic(t.slug, t.title)">
+							<view v-for="t in topicRec" :key="'tp-' + t.id" class="topic-item" @click="openTopic(t.slug, t.title)">
 								<hg-cover :src="t.cover" :width="168" :height="94" :radius="10"></hg-cover>
 								<text class="topic-title">{{t.title}}</text>
 								<text class="topic-sub">{{t.videoCount}} 部作品</text>
@@ -164,14 +164,14 @@
 						</scroll-view>
 					</view>
 
-					<view v-for="cate in cateRec" :key="cate.cateId" class="section">
+					<view v-for="cate in cateRec" :key="'cg-' + cate.cateId" class="section">
 						<view class="section-head">
 							<text class="section-title" :style="sectionFontStyle">{{cate.cateName}}</text>
 						</view>
 						<scroll-view class="row" direction="horizontal" :show-scrollbar="false">
 							<hg-video-card
 								v-for="item in cate.videos"
-								:key="item.id"
+								:key="'cg-' + cate.cateId + '-' + item.id"
 								:id="item.id"
 								:title="item.title"
 								:cover="item.cover"
@@ -450,7 +450,11 @@
 	}
 
 	async function reload() {
-		loading.value = true
+		// 已有内容时不要 loading=true，否则整表卸载会触发 Vapor itemId 空指针
+		const soft = featured.value.length > 0 || latest.value.length > 0 || banners.value.length > 0
+		if (!soft) {
+			loading.value = true
+		}
 		errorText.value = ''
 		loadHint.value = isProbeDone() ? '加载首页…' : '正在选择最快线路…'
 		try {

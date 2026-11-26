@@ -1,6 +1,7 @@
 <script setup>
 	import { installLiquidTabBar } from './common/ui/liquid-tab.uts'
 	import { refreshTypeScale } from './common/ui/type-scale.uts'
+	import { selectFastestEndpoint } from './common/http/endpoint-probe.uts'
 	// #ifdef APP-ANDROID || APP-HARMONY
 	let firstBackTime = 0
 	// #endif
@@ -8,7 +9,8 @@
 	onLaunch(() => {
 		console.log('[app] launch Huangguo Short Drama')
 		refreshTypeScale()
-		// 线路探测交给首页 ensureEndpointReady，避免 App+首页各跑一轮
+		// 启动即探测线路，首页/刷短剧可更早放行
+		selectFastestEndpoint()
 		// 各 tab 页 onShow 也会 install；此处再补一次，确保 UTS 回调挂上
 		// #ifdef APP-IOS
 		const delay = 600

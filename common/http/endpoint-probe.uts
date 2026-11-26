@@ -1,4 +1,10 @@
-import { HG_ENDPOINTS, getHgBaseUrl, setHgBaseUrl } from './config.uts'
+import {
+	HG_ENDPOINTS,
+	HG_ROUTE_RELAYS,
+	getHgBaseUrl,
+	setHgBaseUrl,
+	normalizeBaseUrl
+} from './config.uts'
 import { clearEdgeSessions } from '@/uni_modules/hg-edge'
 
 const PROBE_PATH = '/api/site/config'
@@ -6,6 +12,13 @@ const PROBE_TIMEOUT = 4500
 /** 同一冷启动内 / 短时间内不重复探测 */
 const PROBE_CACHE_KEY = 'hg_last_probe_ms'
 const PROBE_CACHE_TTL_MS = 30 * 60 * 1000
+/** 官方 go-home 线路缓存（域名列表，逗号分隔） */
+const REMOTE_EP_KEY = 'hg_gohome_endpoints'
+const REMOTE_EP_AT_KEY = 'hg_gohome_endpoints_at'
+const REMOTE_EP_TTL_MS = 6 * 60 * 60 * 1000
+const GOHOME_FETCH_TIMEOUT = 2800
+
+let remoteEndpoints: string[] = [] as string[]
 
 type ProbeResult = {
 	url: string
@@ -38,6 +51,8 @@ type ProgressFn = (p: ProbeProgress) => void
 
 let probePromise: Promise<string> | null = null
 let probeDone = false
+/** 首条可用线路已选出（可先放行业务请求，测速仍在后台继续） */
+let probeEarlyReady = false
 let lastProgress: ProbeProgress = {
 	phase: 'idle',
 	done: 0,
@@ -109,6 +124,273 @@ export function getLastLatencies(): EndpointLatency[] {
 	return lastLatencies
 }
 
+function domainToBase(raw: string): string {
+	let s = raw.trim()
+	if (s.length == 0) {
+		return ''
+	}
+	if (s.indexOf('http://') == 0 || s.indexOf('https://') == 0) {
+		return normalizeBaseUrl(s)
+	}
+	// 去掉误带的路径
+	const slash = s.indexOf('/')
+	if (slash >= 0) {
+		s = s.substring(0, slash)
+	}
+	if (s.length == 0) {
+		return ''
+	}
+	return 'https://' + s
+}
+
+function pushUniqueBase(out: string[], base: string) {
+	if (base.length == 0) {
+		return
+	}
+	const h = hostOf(base)
+	for (let i = 0; i < out.length; i++) {
+		if (hostOf(out[i]) == h) {
+			return
+		}
+	}
+	out.push(base)
+}
+
+/** 发布页/中转页不当 API 探测候选 */
+function isPublishPageHost(host: string, label: string, note: string): boolean {
+	const text = label + note
+	if (text.indexOf('发布页') >= 0 || text.indexOf('中转页') >= 0) {
+		return true
+	}
+	if (host.indexOf('.pages.dev') >= 0) {
+		return true
+	}
+	if (host == 'huangguoai.ai' || host == 'www.huangguoai.ai') {
+		return true
+	}
+	if (host.indexOf('hgai') == 0 && host.indexOf('.com') > 0) {
+		return true
+	}
+	return false
+}
+
+function takeGoHomeItem(out: string[], it: UTSJSONObject) {
+	const domain = it.getString('domain')
+	const url = it.getString('url')
+	const rawDom = domain != null && domain!.length > 0
+		? (domain as string)
+		: (url != null ? (url as string) : '')
+	const base = domainToBase(rawDom)
+	if (base.length == 0) {
+		return
+	}
+	const host = hostOf(base)
+	const label = it.getString('label') ?? ''
+	const note = it.getString('note') ?? ''
+	if (isPublishPageHost(host, label as string, note as string)) {
+		return
+	}
+	pushUniqueBase(out, base)
+}
+
+function parseGoHomeBases(raw: string): string[] {
+	const out: string[] = [] as string[]
+	try {
+		const obj = JSON.parse(raw) as UTSJSONObject
+		const data = obj.getJSON('data')
+		if (data == null) {
+			return out
+		}
+		// routes + permanent 中的主站/高速线路；丢掉发布页/中转页
+		const keys = ['routes', 'permanent']
+		for (let k = 0; k < keys.length; k++) {
+			const arr = data!.getArray(keys[k])
+			if (arr == null) {
+				continue
+			}
+			const list = arr as Array<any>
+			for (let i = 0; i < list.length; i++) {
+				takeGoHomeItem(out, list[i] as UTSJSONObject)
+			}
+		}
+	} catch (_) { }
+	return out
+}
+
+function loadCachedRemoteEndpoints(): string[] {
+	if (remoteEndpoints.length > 0) {
+		return remoteEndpoints
+	}
+	const raw = uni.getStorageSync(REMOTE_EP_KEY) as string | null
+	if (raw == null || (raw as string).length == 0) {
+		return [] as string[]
+	}
+	const parts = (raw as string).split(',')
+	const out: string[] = [] as string[]
+	for (let i = 0; i < parts.length; i++) {
+		pushUniqueBase(out, normalizeBaseUrl(parts[i]))
+	}
+	remoteEndpoints = out
+	return out
+}
+
+function saveRemoteEndpoints(list: string[]) {
+	remoteEndpoints = list
+	uni.setStorageSync(REMOTE_EP_KEY, list.join(','))
+	uni.setStorageSync(REMOTE_EP_AT_KEY, Date.now())
+}
+
+function isRemoteCacheFresh(): boolean {
+	const raw = uni.getStorageSync(REMOTE_EP_AT_KEY) as number | string | null
+	if (raw == null) {
+		return false
+	}
+	const t = typeof raw == 'number' ? (raw as number) : parseFloat('' + raw)
+	if (t <= 0 || t != t) {
+		return false
+	}
+	return (Date.now() - t) < REMOTE_EP_TTL_MS
+}
+
+/** 中转完整 URL，或站点 base（自动拼 /api/site/go-home） */
+function resolveGoHomeUrl(seed: string): string {
+	const s = seed.trim()
+	if (s.length == 0) {
+		return ''
+	}
+	const lower = s.toLowerCase()
+	if (lower.indexOf('/go-home') >= 0 || lower.indexOf('/api/site/go-home') >= 0 || lower.indexOf('/routes') >= 0) {
+		return s
+	}
+	return normalizeBaseUrl(s) + '/api/site/go-home'
+}
+
+function parseRelayRoutesOnly(raw: string): string[] {
+	const out: string[] = [] as string[]
+	try {
+		const obj = JSON.parse(raw) as UTSJSONObject
+		const arr = obj.getArray('endpoints')
+		if (arr == null) {
+			return out
+		}
+		const list = arr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			const v = list[i]
+			if (typeof v == 'string') {
+				pushUniqueBase(out, domainToBase(v as string))
+			}
+		}
+	} catch (_) { }
+	return out
+}
+
+function plainFetchGoHomeUrl(url: string): Promise<string[]> {
+	return new Promise<string[]>((resolve) => {
+		if (url.length == 0) {
+			resolve([] as string[])
+			return
+		}
+		uni.request({
+			url: url,
+			method: 'GET',
+			header: {
+				'Accept': 'application/json',
+				'Referer': 'https://huangguoai.com/'
+			} as UTSJSONObject,
+			timeout: GOHOME_FETCH_TIMEOUT,
+			success: (res) => {
+				const code = res.statusCode ?? 0
+				if (code < 200 || code >= 300) {
+					resolve([] as string[])
+					return
+				}
+				let raw = ''
+				const data = res.data
+				if (typeof data == 'string') {
+					raw = data as string
+				} else {
+					try {
+						raw = JSON.stringify(data)
+					} catch (_) {
+						resolve([] as string[])
+						return
+					}
+				}
+				// 中转 /routes 精简格式
+				if (url.toLowerCase().indexOf('/routes') >= 0) {
+					const slim = parseRelayRoutesOnly(raw)
+					if (slim.length > 0) {
+						resolve(slim)
+						return
+					}
+				}
+				resolve(parseGoHomeBases(raw))
+			},
+			fail: (_) => {
+				resolve([] as string[])
+			}
+		})
+	})
+}
+
+/**
+ * 拉官方线路名单：只打中转（主站常被墙）。
+ */
+async function refreshRemoteEndpoints(): Promise<string[]> {
+	if (isRemoteCacheFresh()) {
+		const cached = loadCachedRemoteEndpoints()
+		if (cached.length > 0) {
+			return cached
+		}
+	}
+
+	const urls: string[] = [] as string[]
+	const seenUrl: string[] = [] as string[]
+	function pushUrl(u: string) {
+		if (u.length == 0) {
+			return
+		}
+		for (let i = 0; i < seenUrl.length; i++) {
+			if (seenUrl[i] == u) {
+				return
+			}
+		}
+		seenUrl.push(u)
+		urls.push(u)
+	}
+
+	for (let i = 0; i < HG_ROUTE_RELAYS.length; i++) {
+		pushUrl(resolveGoHomeUrl(HG_ROUTE_RELAYS[i]))
+	}
+
+	for (let i = 0; i < urls.length; i++) {
+		const got = await plainFetchGoHomeUrl(urls[i])
+		if (got.length > 0) {
+			console.log('[endpoint] routes ' + got.length + ' from ' + urls[i])
+			saveRemoteEndpoints(got)
+			return got
+		}
+	}
+	console.log('[endpoint] relay miss, use cache')
+	return loadCachedRemoteEndpoints()
+}
+
+/** 测速候选：中转名单优先；为空才用内置兜底 */
+function collectProbeTargets(): string[] {
+	const out: string[] = [] as string[]
+	const remote = loadCachedRemoteEndpoints()
+	for (let i = 0; i < remote.length; i++) {
+		pushUniqueBase(out, remote[i])
+	}
+	if (out.length > 0) {
+		return out
+	}
+	for (let i = 0; i < HG_ENDPOINTS.length; i++) {
+		pushUniqueBase(out, HG_ENDPOINTS[i])
+	}
+	return out
+}
+
 function buildLatencyList(results: ProbeResult[]): EndpointLatency[] {
 	const cur = getHgBaseUrl()
 	const out: EndpointLatency[] = [] as EndpointLatency[]
@@ -166,7 +448,8 @@ export async function measureAllEndpoints(): Promise<EndpointLatency[]> {
 	}
 	measuring = true
 	try {
-		const list = HG_ENDPOINTS
+		await refreshRemoteEndpoints()
+		const list = collectProbeTargets()
 		const tasks: Promise<ProbeResult>[] = [] as Promise<ProbeResult>[]
 		for (let i = 0; i < list.length; i++) {
 			tasks.push(probeOne(list[i]))
@@ -179,6 +462,36 @@ export async function measureAllEndpoints(): Promise<EndpointLatency[]> {
 		return lastLatencies
 	} finally {
 		measuring = false
+	}
+}
+
+/** 发布页/静态站也会对任意路径回 200 HTML，必须确认是 API JSON */
+function isApiConfigBody(data: any | null): boolean {
+	if (data == null) {
+		return false
+	}
+	if (typeof data == 'string') {
+		const s = (data as string).trim()
+		if (s.length == 0 || s.charAt(0) != '{') {
+			return false
+		}
+		try {
+			const obj = JSON.parse(s) as UTSJSONObject
+			return obj.getJSON('data') != null || obj.getNumber('status') != null
+		} catch (_) {
+			return false
+		}
+	}
+	if (data instanceof UTSJSONObject) {
+		const obj = data as UTSJSONObject
+		return obj.getJSON('data') != null || obj.getNumber('status') != null
+	}
+	// uni.request 可能直接给出已解析对象
+	try {
+		const obj = JSON.parse(JSON.stringify(data)) as UTSJSONObject
+		return obj.getJSON('data') != null || obj.getNumber('status') != null
+	} catch (_) {
+		return false
 	}
 }
 
@@ -196,7 +509,7 @@ function probeOne(base: string): Promise<ProbeResult> {
 			success: (res) => {
 				const code = res.statusCode ?? 0
 				const ms = Date.now() - t0
-				if (code >= 200 && code < 300) {
+				if (code >= 200 && code < 300 && isApiConfigBody(res.data)) {
 					resolve({ url: base, ms: ms, ok: true } as ProbeResult)
 				} else {
 					resolve({ url: base, ms: ms, ok: false } as ProbeResult)
@@ -210,7 +523,17 @@ function probeOne(base: string): Promise<ProbeResult> {
 }
 
 async function runProbe(): Promise<string> {
-	const list = HG_ENDPOINTS
+	emitProgress({
+		phase: 'start',
+		done: 0,
+		total: 0,
+		bestMs: 0,
+		bestHost: '',
+		message: '同步官方线路…'
+	} as ProbeProgress)
+	await refreshRemoteEndpoints()
+
+	const list = collectProbeTargets()
 	const total = list.length
 	emitProgress({
 		phase: 'start',
@@ -231,6 +554,7 @@ async function runProbe(): Promise<string> {
 	let anyOk = false
 	let finished = 0
 	const collected: ProbeResult[] = [] as ProbeResult[]
+	let earlyApplied = false
 
 	await new Promise<void>((resolveAll) => {
 		if (total == 0) {
@@ -250,6 +574,25 @@ async function runProbe(): Promise<string> {
 					bestMs = r.ms
 					bestUrl = r.url
 					anyOk = true
+					// 首条可用立刻切线并放行业务，不等全部测完
+					if (!earlyApplied) {
+						earlyApplied = true
+						const ch = setHgBaseUrl(bestUrl)
+						if (ch) {
+							try {
+								clearEdgeSessions()
+							} catch (_) { }
+						}
+						probeEarlyReady = true
+						console.log('[endpoint] early ' + bestUrl + ' (' + bestMs + 'ms)')
+					} else {
+						const ch = setHgBaseUrl(bestUrl)
+						if (ch) {
+							try {
+								clearEdgeSessions()
+							} catch (_) { }
+						}
+					}
 				}
 				const host = anyOk ? hostOf(bestUrl) : ''
 				const msg = anyOk
@@ -275,6 +618,7 @@ async function runProbe(): Promise<string> {
 	if (!anyOk) {
 		console.log('[endpoint] all failed, keep ' + bestUrl)
 		probeDone = true
+		probeEarlyReady = true
 		markProbeCached()
 		emitProgress({
 			phase: 'done',
@@ -296,9 +640,9 @@ async function runProbe(): Promise<string> {
 	} else {
 		console.log('[endpoint] keep ' + bestUrl + ' (' + bestMs + 'ms)')
 	}
-	// 刷新 selected 标记
 	lastLatencies = buildLatencyList(collected)
 	probeDone = true
+	probeEarlyReady = true
 	markProbeCached()
 	const tip = hostOf(bestUrl) + ' · ' + bestMs + 'ms'
 	emitProgress({
@@ -320,6 +664,7 @@ async function runProbe(): Promise<string> {
 export function selectFastestEndpoint(): Promise<string> {
 	if (probeDone || isProbeCacheFresh()) {
 		probeDone = true
+		probeEarlyReady = true
 		return Promise.resolve(getHgBaseUrl())
 	}
 	if (probePromise != null) {
@@ -328,17 +673,37 @@ export function selectFastestEndpoint(): Promise<string> {
 	probePromise = runProbe().catch((e): string => {
 		console.log('[endpoint] probe error ' + e)
 		probeDone = true
+		probeEarlyReady = true
 		markProbeCached()
 		return getHgBaseUrl()
 	})
 	return probePromise!
 }
 
-/** 业务请求前调用：等探测结束（或已结束则立刻返回） */
+/**
+ * 业务请求前：有缓存或已 early 放行则立刻返回；
+ * 否则等首条可用线路（不必等全部测完）。
+ */
 export async function ensureEndpointReady(): Promise<string> {
-	if (probeDone || isProbeCacheFresh()) {
-		probeDone = true
+	if (probeDone || isProbeCacheFresh() || probeEarlyReady) {
+		if (isProbeCacheFresh()) {
+			probeDone = true
+			probeEarlyReady = true
+		}
 		return getHgBaseUrl()
+	}
+	selectFastestEndpoint()
+	// 轮询等到 early / done，最长约探测超时
+	const deadline = Date.now() + PROBE_TIMEOUT + 4000
+	while (Date.now() < deadline) {
+		if (probeDone || probeEarlyReady) {
+			return getHgBaseUrl()
+		}
+		await new Promise<void>((r) => {
+			setTimeout(() => {
+				r()
+			}, 40)
+		})
 	}
 	return await selectFastestEndpoint()
 }

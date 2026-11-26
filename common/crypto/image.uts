@@ -5,6 +5,37 @@ let coverSeq = 0
 const memCache = new Map<string, string>()
 const inflight = new Map<string, Promise<string> | null>()
 
+/** 限制同时解密张数，避免列表「加载更多」时主线程卡顿 */
+const COVER_MAX_PARALLEL = 3
+let coverActive = 0
+const coverWaiters: Array<() => void> = [] as Array<() => void>
+
+function acquireCoverSlot(): Promise<void> {
+	if (coverActive < COVER_MAX_PARALLEL) {
+		coverActive++
+		return Promise.resolve()
+	}
+	return new Promise<void>((resolve) => {
+		coverWaiters.push(() => {
+			coverActive++
+			resolve()
+		})
+	})
+}
+
+function releaseCoverSlot() {
+	coverActive--
+	if (coverActive < 0) {
+		coverActive = 0
+	}
+	if (coverWaiters.length > 0) {
+		const next = coverWaiters.shift()
+		if (next != null) {
+			next!()
+		}
+	}
+}
+
 /**
  * 下载 CDN 加密封面 → AES-CBC 智能解密 → 写入 USER_DATA_PATH
  * 用 request+arraybuffer，避免 downloadFile 临时文件 ENOENT
@@ -22,13 +53,17 @@ export function loadDecryptedCover(rawUrl: string): Promise<string> {
 	if (pending != null) {
 		return pending!
 	}
-	const job = fetchThenDecrypt(url).then((path: string): string => {
-		memCache.set(url, path)
-		inflight.set(url, null)
-		return path
-	}).catch((e: any): string => {
-		inflight.set(url, null)
-		throw e
+	const job = acquireCoverSlot().then((): Promise<string> => {
+		return fetchThenDecrypt(url).then((path: string): string => {
+			releaseCoverSlot()
+			memCache.set(url, path)
+			inflight.set(url, null)
+			return path
+		}).catch((e: any): string => {
+			releaseCoverSlot()
+			inflight.set(url, null)
+			throw e
+		})
 	})
 	inflight.set(url, job)
 	return job

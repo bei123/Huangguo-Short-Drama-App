@@ -1,0 +1,17 @@
+{
+  "name": "hg-gohome-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "拉取黄果 go-home 线路的中转站（服务器需能访问主站，可用 HTTP(S)_PROXY）",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "undici": "^6.21.0"
+  }
+}

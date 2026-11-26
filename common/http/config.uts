@@ -1,18 +1,19 @@
 /** 与 hg-edge 共用，改地址后两边都读这个 key */
 export const HG_API_BASE_KEY = 'hg_api_base'
 
-/** 多线路入口（无尾斜杠）；探测后选延迟最低者 */
+/**
+ * 线路名单中转（优先）。
+ * 手机 → 中转拉官方线路 → 对这些地址测速选最快。
+ */
+export const HG_ROUTE_RELAYS: string[] = [
+	'https://relay.2000gallery.art/routes',
+	'https://hg-gohome-relay.zhibei66.workers.dev/routes'
+]
+
+/** 中转名单拉不到时的测速兜底 */
 export const HG_ENDPOINTS: string[] = [
-	'https://thu.aqkmowihz.cc',
-	'https://hust.kplsifomz.cc',
-	'https://jlu.aqkmowihz.cc',
-	'https://ruc.kplsifomz.cc',
-	'https://sdu.aqkmowihz.cc',
-	'https://nju.kplsifomz.cc',
-	'https://ea3.aqkmowihz.cc',
-	'https://fh0sm.aqkmowihz.cc',
-	'https://m47ts.aqkmowihz.cc',
-	'https://tapnr.kplsifomz.cc',
+	'https://d2prlw64zv3q3a.cloudfront.net',
+	'https://d2f1636icqru0f.cloudfront.net',
 	'https://huangguoai.com'
 ]
 
@@ -20,7 +21,7 @@ export const HG_ENDPOINTS: string[] = [
 export const HG_REFERER = 'https://huangguoai.com/'
 export const HG_PIC_CDN = 'https://pic.qnlycc.cn'
 
-/** 探测前默认走主站，避免首包打到未知镜像 */
+/** 默认 API base */
 export const HG_DEFAULT_BASE = 'https://huangguoai.com'
 
 let memoryBase = ''

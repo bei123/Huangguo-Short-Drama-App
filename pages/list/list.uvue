@@ -1,6 +1,6 @@
 <template>
 	<!-- #ifdef APP -->
-	<scroll-view class="page" direction="vertical" @scrolltolower="loadMore">
+	<scroll-view class="page" direction="vertical" lower-threshold="120" @scrolltolower="loadMore">
 	<!-- #endif -->
 		<view class="page-inner">
 			<!-- #ifdef APP-IOS -->
@@ -17,7 +17,7 @@
 			</view>
 			<hg-empty v-else-if="items.length == 0" mark="空" title="暂无内容"></hg-empty>
 			<view v-else class="grid">
-				<view v-for="item in items" :key="item.id" class="grid-card">
+				<view v-for="item in items" :key="'li-' + item.id" class="grid-card">
 					<hg-video-card
 						:id="item.id"
 						:title="item.title"
@@ -55,54 +55,66 @@
 	const items = ref<VideoCard[]>([] as VideoCard[])
 	const page = ref(1)
 	const pages = ref(1)
+	const lastPageCount = ref(0)
 	const winW = uni.getWindowInfo().windowWidth
 	const cardW = Math.floor((winW - 16 - 16 - 16) / 3)
 	const cardH = Math.floor(cardW * 1.36)
 
 	const hasMore = computed((): boolean => {
-		return page.value < pages.value
+		if (page.value < pages.value) {
+			return true
+		}
+		// 部分接口 pages 不准：上一页仍满 20 条则继续试下一页
+		return lastPageCount.value >= 20
 	})
 
 	async function fetchPage(p: number): Promise<VideoCard[]> {
 		if (mode.value == 'category') {
 			const res = await fetchCategoryVideos(route.value, p, 20)
 			page.value = res.page
-			pages.value = res.pages
+			pages.value = res.pages > 0 ? res.pages : pages.value
+			lastPageCount.value = res.items.length
 			return res.items
 		}
 		if (mode.value == 'sort') {
 			const res = await fetchVideosBySort(route.value.length > 0 ? route.value : 'new', p)
 			page.value = res.page
-			pages.value = res.pages
+			pages.value = res.pages > 0 ? res.pages : pages.value
+			lastPageCount.value = res.items.length
 			return res.items
 		}
 		if (mode.value == 'original') {
 			const res = await fetchOriginalVideos(p)
 			page.value = res.page
-			pages.value = res.pages
+			pages.value = res.pages > 0 ? res.pages : pages.value
+			lastPageCount.value = res.items.length
 			return res.items
 		}
 		if (mode.value == 'long') {
 			const res = await fetchLongVideos(p)
 			page.value = res.page
-			pages.value = res.pages
+			pages.value = res.pages > 0 ? res.pages : pages.value
+			lastPageCount.value = res.items.length
 			return res.items
 		}
 		if (mode.value == 'tag') {
 			const res = await fetchVideosByTag(route.value, p)
 			page.value = res.page
-			pages.value = res.pages
+			pages.value = res.pages > 0 ? res.pages : pages.value
+			lastPageCount.value = res.items.length
 			return res.items
 		}
 		if (mode.value == 'all') {
 			const res = await fetchAllVideos(p)
 			page.value = res.page
-			pages.value = res.pages
+			pages.value = res.pages > 0 ? res.pages : pages.value
+			lastPageCount.value = res.items.length
 			return res.items
 		}
 		const res = await fetchLatest(p)
 		page.value = res.page
-		pages.value = res.pages
+		pages.value = res.pages > 0 ? res.pages : pages.value
+		lastPageCount.value = res.items.length
 		return res.items
 	}
 
@@ -110,6 +122,9 @@
 		loading.value = true
 		errorText.value = ''
 		items.value = [] as VideoCard[]
+		page.value = 1
+		pages.value = 1
+		lastPageCount.value = 0
 		try {
 			items.value = await fetchPage(1)
 		} catch (e) {
@@ -126,7 +141,13 @@
 		}
 		loadingMore.value = true
 		try {
-			const nextItems = await fetchPage(page.value + 1)
+			const nextPage = page.value + 1
+			const nextItems = await fetchPage(nextPage)
+			if (nextItems.length == 0) {
+				pages.value = page.value
+				lastPageCount.value = 0
+				return
+			}
 			const merged = items.value.slice(0)
 			for (let i = 0; i < nextItems.length; i++) {
 				merged.push(nextItems[i])

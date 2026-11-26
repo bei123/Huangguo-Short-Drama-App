@@ -98,15 +98,40 @@ export async function fetchGoHome(): Promise<GoHomeData> {
 			}
 		}
 	}
+	function pushRoute(it: UTSJSONObject) {
+		const u = readStr(it, 'domain', readStr(it, 'url', ''))
+		if (u.length == 0) {
+			return
+		}
+		const label = readStr(it, 'label', '')
+		const note = readStr(it, 'note', '')
+		const text = label + note
+		// 发布页/中转页不进可用站点列表
+		if (text.indexOf('发布页') >= 0 || text.indexOf('中转页') >= 0) {
+			return
+		}
+		if (u.indexOf('.pages.dev') >= 0 || u.indexOf('huangguoai.ai') >= 0) {
+			return
+		}
+		if (u.indexOf('hgai') == 0 && u.indexOf('.com') > 0) {
+			return
+		}
+		if (routes.indexOf(u) < 0) {
+			routes.push(u)
+		}
+	}
 	const routeArr = data!.getArray('routes')
 	if (routeArr != null) {
 		const list = routeArr as Array<any>
 		for (let i = 0; i < list.length; i++) {
-			const it = list[i] as UTSJSONObject
-			const u = readStr(it, 'url', readStr(it, 'name', ''))
-			if (u.length > 0) {
-				routes.push(u)
-			}
+			pushRoute(list[i] as UTSJSONObject)
+		}
+	}
+	const permArr = data!.getArray('permanent')
+	if (permArr != null) {
+		const list = permArr as Array<any>
+		for (let i = 0; i < list.length; i++) {
+			pushRoute(list[i] as UTSJSONObject)
 		}
 	}
 	let mail = ''

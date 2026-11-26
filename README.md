@@ -13,14 +13,14 @@
 
 ## 下载
 
-最新版：[v1.0.10](https://github.com/bei123/Huangguo-Short-Drama-App/releases/tag/v1.0.10)
+最新版：[v1.0.11](https://github.com/bei123/Huangguo-Short-Drama-App/releases/tag/v1.0.11)
 
 两个 APK **功能相同**，仅 CPU 架构不同：
 
 | 文件 | 架构 | 适用设备 | 下载 |
 | --- | --- | --- | --- |
-| **HGV8a.apk** | `arm64-v8a` | 近些年大多数手机（优先装这个） | [下载](https://github.com/bei123/Huangguo-Short-Drama-App/releases/download/v1.0.10/HGV8a.apk) |
-| **HGV7a.apk** | `armeabi-v7a` | 较老的 32 位 ARM 机型 | [下载](https://github.com/bei123/Huangguo-Short-Drama-App/releases/download/v1.0.10/HGV7a.apk) |
+| **HGV8a.apk** | `arm64-v8a` | 近些年大多数手机（优先装这个） | [下载](https://github.com/bei123/Huangguo-Short-Drama-App/releases/download/v1.0.11/HGV8a.apk) |
+| **HGV7a.apk** | `armeabi-v7a` | 较老的 32 位 ARM 机型 | [下载](https://github.com/bei123/Huangguo-Short-Drama-App/releases/download/v1.0.11/HGV7a.apk) |
 
 不确定时先装 **HGV8a**；若提示不兼容再试 **HGV7a**。签名与旧调试包不同时，需先卸载再装。
 
@@ -29,7 +29,7 @@
 | 项 | 说明 |
 | --- | --- |
 | 工程类型 | uni-app x（Vapor） |
-| 版本 | `manifest.json` → 1.0.10（110） |
+| 版本 | `manifest.json` → 1.0.11（111） |
 | 主平台 | **Android** |
 | iOS | 兼容性不佳；需要 iOS 请用 [HuangguoNative](https://github.com/bei123/HuangguoNative) |
 
@@ -37,9 +37,9 @@
 
 ## 功能
 
-- **首页**：Banner、精选、更新、分类 / 专题推荐
-- **发现**：分类列表
-- **刷短剧**（Tab 居中）：竖滑推荐流；点赞 / 收藏 / 评论；长按 2 倍速；进度条拖拽预览
+- **首页**：Banner（3:1，遮罩显示剧名）、精选、更新、分类 / 专题；切回 Tab 软刷新
+- **发现**：分类列表，下滑加载更多
+- **刷短剧**（Tab 居中）：竖滑随机推荐流；点赞 / 收藏 / 评论；长按 2 倍速；进度条拖拽预览
 - **连看全集**：推荐流内点「全集」进入分集竖滑；上滑切下一集，返回 /「推荐」退出回推荐流
 - **搜索**：热词与结果
 - **我的**：登录注册、历史 / 收藏 / 点赞 / 关注、消息、编辑资料
@@ -53,6 +53,14 @@
 - `dx150-edge-v1`：ECDH P-256 → HKDF → AES-GCM
 - 原生 UTS：Android 为主（`utssdk/app-android`）；iOS 有实验性扩展（`utssdk/app-ios`），完整体验请用原生仓库
 - Token 失效（如 401）会清理本地会话，避免盲重试
+- 封面解密限并发（默认 3 路），减轻列表 / 首页卡顿
+
+**线路探测**（启动自动）
+
+- 先打中转拉官方 `go-home` 线路名单，过滤非 API 页后并发测速，选最快可用基址
+- 中转（优先）：`https://relay.2000gallery.art/routes`、Cloudflare Worker；名单拉不到才用内置 CloudFront / 主站兜底
+- 地址配置：`common/http/config.uts` → `HG_ROUTE_RELAYS`
+- 自建中转说明：[`relay/README.md`](./relay/README.md)（Node + 代理，或 CF Worker）
 
 **导航**
 
@@ -69,7 +77,8 @@
 Huangguo-Short-Drama-App/
 ├── pages/              # 业务页面（含 swipe 刷短剧 / 连看）
 ├── components/         # 通用组件
-├── common/             # API、鉴权、加密、模型、UI 工具
+├── common/             # API、鉴权、加密、HTTP 探测、模型
+├── relay/              # 线路中转（Node / CF Worker 部署说明）
 ├── uni_modules/
 │   ├── hg-edge/        # 边缘加密原生模块
 │   └── hg-liquid-glass/# 液态玻璃 TabBar
