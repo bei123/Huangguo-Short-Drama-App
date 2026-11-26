@@ -23,6 +23,7 @@
 							class="player"
 							:style="{ height: playerH + 'px' }"
 							:src="playUrl"
+							:initial-time="resumeInitialTime"
 							:autoplay="true"
 							:controls="true"
 							:show-center-play-btn="true"
@@ -34,7 +35,7 @@
 							object-fit="contain"
 							@play="onVideoPlay"
 							@pause="onVideoPause"
-							@ended="onVideoPause"
+							@ended="onVideoEnded"
 							@error="onPlayError"
 							@timeupdate="onTimeUpdate"
 							@touchstart="onSpeedTouchStart"
@@ -279,6 +280,7 @@
 	import { refreshTypeScale, fontStyle } from '../../common/ui/type-scale.uts'
 	import { getWindowWidth, getWindowHeight, getSafeBottom, refreshLayout } from '../../common/ui/layout.uts'
 	import { uninstallLiquidTabBar } from '../../common/ui/liquid-tab.uts'
+	import { loadPlayProgress, savePlayProgress, clearPlayProgress } from '../../common/playback/progress.uts'
 
 	refreshLayout()
 	const playerW = ref(getWindowWidth())
@@ -341,6 +343,10 @@
 
 	const playCurrent = ref(0)
 	const playDuration = ref(0)
+	/** 仅挂载时写入，勿绑定实时 playCurrent */
+	const resumeInitialTime = ref(0)
+	let lastProgressSaveMs = 0
+	const PROGRESS_SAVE_GAP_MS = 4000
 	const seeking = ref(false)
 	const seekRatio = ref(0)
 	const PROG_PAD = 16
@@ -506,8 +512,8 @@
 		}
 		playLoading.value = true
 		playTip.value = '获取播放地址…'
-		currentEp.value = startEp
 		destroyPlayer()
+		currentEp.value = startEp
 		pageVisible.value = true
 		try {
 			let info: PlaybackInfo | null = null
@@ -525,6 +531,7 @@
 				playTip.value = '播放失败'
 				return
 			}
+			prepareResumeTime(startEp)
 			playerKey.value = playerKey.value + 1
 			playUrl.value = info.url
 			expiresAt.value = info.expiresAt
@@ -644,6 +651,31 @@
 		seekRatio.value = 0
 		seekUiRatio.value = 0
 		wasPlayingBeforeSeek = false
+		lastProgressSaveMs = 0
+	}
+
+	function persistProgress(force: boolean) {
+		const vid = videoId.value
+		const ep = currentEp.value
+		const t = playCurrent.value
+		const d = playDuration.value
+		if (vid.length == 0 || ep <= 0) {
+			return
+		}
+		const now = Date.now()
+		if (!force && (now - lastProgressSaveMs) < PROGRESS_SAVE_GAP_MS) {
+			return
+		}
+		lastProgressSaveMs = now
+		savePlayProgress(vid, ep, t, d)
+	}
+
+	function prepareResumeTime(ep: number) {
+		const saved = loadPlayProgress(videoId.value, ep)
+		resumeInitialTime.value = saved > 0 ? saved : 0
+		if (saved > 0) {
+			playCurrent.value = saved
+		}
 	}
 
 	function seekPreviewPlayer(t: number) {
@@ -754,6 +786,7 @@
 		}
 		seeking.value = false
 		wasPlayingBeforeSeek = false
+		persistProgress(true)
 	}
 
 	function onTimeUpdate(e: UniVideoTimeUpdateEvent) {
@@ -765,7 +798,15 @@
 			if (e.detail.duration > 0) {
 				playDuration.value = e.detail.duration
 			}
+			persistProgress(false)
 		} catch (_) { }
+	}
+
+	function onVideoEnded() {
+		videoPlaying.value = false
+		clearPlayProgress(videoId.value, currentEp.value)
+		playCurrent.value = 0
+		resumeInitialTime.value = 0
 	}
 
 	function setPlaybackRate(rate: number) {
@@ -872,7 +913,9 @@
 		speedGestureActive = false
 		speedLongPressFired = false
 		endSpeedBoost()
+		persistProgress(true)
 		resetProgress()
+		resumeInitialTime.value = 0
 		try {
 			const ctx = uni.createVideoContext('detailPlayer')
 			ctx.pause()
@@ -894,15 +937,16 @@
 		}
 		playLoading.value = true
 		playTip.value = '获取播放地址…'
-		currentEp.value = ep
 		// 先销毁上一集播放器，再拉新地址挂载
 		destroyPlayer()
+		currentEp.value = ep
 		pageVisible.value = true
 		try {
 			const info = await fetchPlayback(videoId.value, ep)
 			if (currentEp.value != ep) {
 				return
 			}
+			prepareResumeTime(ep)
 			playerKey.value = playerKey.value + 1
 			playUrl.value = info.url
 			expiresAt.value = info.expiresAt
@@ -1169,8 +1213,9 @@
 		try {
 			uninstallLiquidTabBar()
 		} catch (_) { }
-		// 从二级页返回：重新挂载；autoplay 会起播（离开前未播则用户可再点）
+		// 从二级页返回：按本地进度续播
 		if (resumeOnShow && playUrl.value.length > 0) {
+			prepareResumeTime(currentEp.value)
 			playerKey.value = playerKey.value + 1
 		}
 		resumeOnShow = false
@@ -1178,6 +1223,7 @@
 
 	onHide(() => {
 		endSpeedBoost()
+		persistProgress(true)
 		resumeOnShow = playUrl.value.length > 0
 		// 卸掉 video，避免栈里叠多个详情时旧播放器继续占资源/出声
 		try {
@@ -1190,6 +1236,7 @@
 
 	onUnload(() => {
 		endSpeedBoost()
+		persistProgress(true)
 		resumeOnShow = false
 		pageVisible.value = false
 		destroyPlayer()

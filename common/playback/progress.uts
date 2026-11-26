@@ -1,0 +1,54 @@
+/** 详情页集内进度：云端 history 只记 ep，秒数落本地 */
+
+const STORAGE_PREFIX = 'hg_play_pos_'
+const MIN_SAVE_SEC = 5
+const NEAR_END_RATIO = 0.92
+
+function keyOf(videoId: string, ep: number): string {
+	return STORAGE_PREFIX + videoId + '_' + Math.floor(ep)
+}
+
+export function loadPlayProgress(videoId: string, ep: number): number {
+	if (videoId.length == 0 || ep <= 0) {
+		return 0
+	}
+	try {
+		const raw = uni.getStorageSync(keyOf(videoId, ep))
+		if (raw == null) {
+			return 0
+		}
+		const n = typeof raw == 'number' ? (raw as number) : parseFloat('' + raw)
+		if (isNaN(n) || n < MIN_SAVE_SEC) {
+			return 0
+		}
+		return n
+	} catch (_) {
+		return 0
+	}
+}
+
+export function savePlayProgress(videoId: string, ep: number, sec: number, duration: number): void {
+	if (videoId.length == 0 || ep <= 0) {
+		return
+	}
+	if (sec < MIN_SAVE_SEC) {
+		return
+	}
+	// 快看完就清掉，下次从头播
+	if (duration > 0 && sec >= duration * NEAR_END_RATIO) {
+		clearPlayProgress(videoId, ep)
+		return
+	}
+	try {
+		uni.setStorageSync(keyOf(videoId, ep), Math.floor(sec))
+	} catch (_) { }
+}
+
+export function clearPlayProgress(videoId: string, ep: number): void {
+	if (videoId.length == 0 || ep <= 0) {
+		return
+	}
+	try {
+		uni.removeStorageSync(keyOf(videoId, ep))
+	} catch (_) { }
+}
